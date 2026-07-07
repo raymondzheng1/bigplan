@@ -82,7 +82,7 @@
   @keyframes rise { from { opacity:0; transform:translateY(10px) scale(.995); } to { opacity:1; transform:none; } }
 
   .addrow { display:flex; gap:10px; margin-bottom:16px; }
-  .addrow input { flex:1; border:none; border-radius:14px; padding:13px 16px; font-size:15px;
+  .addrow input { flex:1; min-width:0; border:none; border-radius:14px; padding:13px 16px; font-size:15px;
     background:rgba(120,120,128,.10); transition:box-shadow .2s, background .2s; letter-spacing:-.01em; }
   .addrow input::placeholder { color:var(--sub); }
   .addrow input:focus { outline:none; background:#fff; box-shadow:0 0 0 4px var(--tint), 0 1px 4px rgba(0,0,0,.06); }
@@ -449,6 +449,18 @@
     <h3 id="celebTitle"></h3>
     <p id="celebMsg"></p>
     <button class="celeb-btn" onclick="$('celebrate').classList.remove('on')">Keep going</button>
+  </div>
+</div>
+
+<!-- image viewer (lightbox) -->
+<div id="viewer" class="overlay" style="background:rgba(0,0,0,.88)">
+  <div style="max-width:94vw; text-align:center">
+    <img id="viewerImg" alt="" style="max-width:94vw; max-height:72vh; border-radius:14px; box-shadow:0 24px 80px rgba(0,0,0,.6)">
+    <div id="viewerName" style="color:rgba(255,255,255,.7); font-size:13px; margin-top:12px"></div>
+    <div class="dlgrow" style="justify-content:center">
+      <button class="dlg-new" onclick="downloadView()">Download</button>
+      <button class="dlg-cancel" style="color:rgba(255,255,255,.8)" onclick="$('viewer').classList.remove('on')">Close</button>
+    </div>
   </div>
 </div>
 
@@ -1010,8 +1022,7 @@ function taskLi(t) {
       const n = document.createElement('span'); n.className = 'n';
       n.textContent = '📎 ' + f.name + ' (' + fmtSize(f.size) + ')';
       c.appendChild(n);
-      if (f.data) c.onclick = ev => { if (ev.target.classList.contains('x')) return;
-        const a = document.createElement('a'); a.href = f.data; a.download = f.name; a.click(); };
+      if (f.data) c.onclick = ev => { if (ev.target.classList.contains('x')) return; viewFile(f); };
       const rm = document.createElement('button'); rm.className = 'x'; rm.textContent = '✕';
       rm.onclick = ev => { ev.stopPropagation(); t.files.splice(fi, 1); saveAll(); };
       c.appendChild(rm); chips.appendChild(c);
@@ -1245,20 +1256,62 @@ function downloadReport() {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
+/* images are downscaled + recompressed so photos fit local storage and stay viewable */
+function compressImage(file, maxDim = 1600, quality = 0.82) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      try { resolve(c.toDataURL('image/jpeg', quality)); } catch { resolve(null); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
 function attachFiles(task, fileList) {
   const files = Array.from(fileList || []); if (!files.length) return;
   let pending = files.length;
+  const doneOne = () => { if (--pending === 0) saveAll(); };
   files.forEach(f => {
-    if (f.size <= MAX_FILE) {
+    if (/^image\//.test(f.type)) {
+      compressImage(f).then(dataUrl => {
+        if (dataUrl && dataUrl.length <= 2_000_000)
+          task.files.push({ name:f.name, size:f.size, type:'image/jpeg', data:dataUrl });
+        else
+          task.files.push({ name:f.name, size:f.size, type:f.type });
+        doneOne();
+      });
+    } else if (f.size <= MAX_FILE) {
       const r = new FileReader();
-      r.onload = () => { task.files.push({ name:f.name, size:f.size, type:f.type, data:r.result }); if (--pending === 0) saveAll(); };
-      r.onerror = () => { task.files.push({ name:f.name, size:f.size, type:f.type }); if (--pending === 0) saveAll(); };
+      r.onload = () => { task.files.push({ name:f.name, size:f.size, type:f.type, data:r.result }); doneOne(); };
+      r.onerror = () => { task.files.push({ name:f.name, size:f.size, type:f.type }); doneOne(); };
       r.readAsDataURL(f);
     } else {
       task.files.push({ name:f.name, size:f.size, type:f.type });
-      if (--pending === 0) saveAll();
+      doneOne();
     }
   });
+}
+/* file viewer: images open in a lightbox; other files download */
+let currentView = null;
+function viewFile(f) {
+  if (/^image\//.test(f.type || '') && f.data) {
+    currentView = f;
+    $('viewerImg').src = f.data;
+    $('viewerName').textContent = f.name;
+    $('viewer').classList.add('on');
+  } else {
+    const a = document.createElement('a'); a.href = f.data; a.download = f.name; a.click();
+  }
+}
+function downloadView() {
+  if (!currentView) return;
+  const a = document.createElement('a'); a.href = currentView.data; a.download = currentView.name; a.click();
 }
 
 /* new task from a picked file/photo (the mobile equivalent of the drop zone) */
@@ -1433,6 +1486,7 @@ function dupChoice(choice) {
 }
 $('overlay').addEventListener('click', e => { if (e.target === $('overlay')) dupChoice('cancel'); });
 $('report').addEventListener('click', e => { if (e.target === $('report')) $('report').classList.remove('on'); });
+$('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').classList.remove('on'); });
 $('repPeriod').addEventListener('change', renderReport);
 $('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
 
