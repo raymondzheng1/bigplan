@@ -90,6 +90,8 @@
     padding:0 24px; cursor:pointer; font-size:14.5px; font-weight:500; transition:background .2s, transform .15s; }
   .addrow button:hover { background:var(--blue-h); }
   .addrow button:active { transform:scale(.96); }
+  .addrow button.filebtn { background:rgba(120,120,128,.12); color:var(--ink); font-size:17px; padding:0 16px; }
+  .addrow button.filebtn:hover { background:rgba(120,120,128,.2); }
 
   /* kanban board */
   .board { display:flex; gap:14px; overflow-x:auto; padding:4px 2px 12px; align-items:flex-start; }
@@ -330,7 +332,12 @@
   </div>
 
   <div class="card pane on" id="p-tasks">
-    <div class="addrow"><input id="ti" placeholder="Add a task…"><button onclick="addTask()">Add</button></div>
+    <div class="addrow">
+      <input id="ti" placeholder="Add a task…">
+      <button class="filebtn" onclick="$('newtaskfile').click()" title="New task from a file or photo">📎</button>
+      <button onclick="addTask()">Add</button>
+      <input type="file" id="newtaskfile" multiple style="display:none">
+    </div>
     <div class="board" id="board"></div>
     <div id="dropzone">Drop files here to create a task — or drop onto a card to attach</div>
     <div class="taskfoot">
@@ -1253,6 +1260,17 @@ function attachFiles(task, fileList) {
     }
   });
 }
+
+/* new task from a picked file/photo (the mobile equivalent of the drop zone) */
+$('newtaskfile').addEventListener('change', e => {
+  const files = Array.from(e.target.files || []); if (!files.length) return;
+  const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''),
+    done:false, files:[], col: cols[0].id, createdAt: Date.now() };
+  tasks.push(t);
+  attachFiles(t, e.target.files);
+  toast('Task created from file');
+  e.target.value = '';
+});
 
 /* attach via file picker (works everywhere — this is THE way on mobile) */
 let attachTarget = null;
