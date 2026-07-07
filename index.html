@@ -129,6 +129,8 @@
   .addcol:hover { border-color:var(--blue); color:var(--blue); background:var(--tint); }
 
   .tstamp { font-size:10.5px; color:#c7c7cc; margin-top:7px; letter-spacing:0; }
+  .dategroup { font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--sub); padding:8px 4px 2px; list-style:none; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .chip { display:inline-flex; align-items:center; gap:5px; background:var(--tint); color:#0066cc;
     border-radius:980px; padding:3px 11px; font-size:11.5px; font-weight:500; cursor:pointer;
@@ -858,7 +860,6 @@ let cols = [], tasks = [];
 function initState() {
   cols = load('tk_cols', null) || [
     { id: 'c-todo', name: 'To Do' },
-    { id: 'c-doing', name: 'In Progress' },
     { id: 'c-done', name: 'Done' }
   ];
   tasks = load('tk_tasks', []);
@@ -870,12 +871,41 @@ function initState() {
     if (!t.col || !cols.some(c => c.id === t.col)) t.col = t.done ? (cols[cols.length-1] || cols[0]).id : cols[0].id;
   });
   tasks.sort((a, b) => a.createdAt - b.createdAt); // default: oldest first (drag still overrides)
+  // retire the old default "In Progress" column: move its tasks to the first column
+  const doing = cols.find(c => c.id === 'c-doing');
+  if (doing && cols.length > 1) {
+    const dest = cols.find(c => c.id !== 'c-doing');
+    tasks.forEach(t => { if (t.col === 'c-doing') t.col = dest.id; });
+    cols.splice(cols.indexOf(doing), 1);
+  }
+  // completed tasks always live in the Done column, each with a completion date
+  const dc = doneColId();
+  tasks.forEach(t => {
+    if (t.done) {
+      if (!t.doneAt) t.doneAt = t.createdAt || Date.now();
+      if (dc && t.col !== dc) { t.prevCol = t.prevCol || t.col; t.col = dc; }
+    }
+  });
   habits = load('tk_habits', []);
   durs = load('tk_dur', { focus: 25, break: 5 });
   left = durs[mode] * 60;
 }
 
 function saveAll() { store('tk_tasks', tasks); store('tk_cols', cols); renderBoard(); }
+
+function doneColId() {
+  const c = cols.find(c => c.id === 'c-done' || /^(done|complete[d]?|完成)$/i.test((c.name || '').trim())) || cols[cols.length - 1];
+  return c ? c.id : null;
+}
+function dateLabel(ms) {
+  if (!ms) return 'Earlier';
+  const d = new Date(ms), now = new Date();
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 864e5);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday:'short', day:'numeric', month:'short' });
+}
 
 let draggedId = null;
 
@@ -893,8 +923,8 @@ function taskLi(t) {
     t.done = cb.checked;
     if (cb.checked) {                       // completing → stamp it and move to the Done list
       t.doneAt = Date.now();
-      const doneCol = cols.find(c => c.id === 'c-done' || /^(done|complete[d]?|完成)$/i.test(c.name.trim())) || cols[cols.length - 1];
-      if (doneCol && t.col !== doneCol.id) { t.prevCol = t.col; t.col = doneCol.id; }
+      const dcc = doneColId();
+      if (dcc && t.col !== dcc) { t.prevCol = t.col; t.col = dcc; }
       bumpDone();
     } else {                                // un-completing → back to where it came from
       delete t.doneAt;
@@ -1000,7 +1030,24 @@ function renderBoard() {
     head.append(name, count, del);
 
     const ul = document.createElement('ul'); ul.className = 'colbody';
-    inCol.forEach(t => ul.appendChild(taskLi(t)));
+    if (col.id === doneColId() && inCol.length) {
+      // Done column: group by completion date, newest day first — a visible progress log
+      const sorted = [...inCol].sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+      const keyOf = t => t.doneAt ? new Date(t.doneAt).toDateString() : 'Earlier';
+      let lastKey = null;
+      sorted.forEach(t => {
+        const key = keyOf(t);
+        if (key !== lastKey) {
+          lastKey = key;
+          const h = document.createElement('li'); h.className = 'dategroup';
+          h.textContent = dateLabel(t.doneAt) + ' · ' + sorted.filter(x => keyOf(x) === key).length;
+          ul.appendChild(h);
+        }
+        ul.appendChild(taskLi(t));
+      });
+    } else {
+      inCol.forEach(t => ul.appendChild(taskLi(t)));
+    }
 
     cEl.addEventListener('dragover', e => {
       e.preventDefault();
