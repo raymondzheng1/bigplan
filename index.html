@@ -459,6 +459,21 @@
   </div>
 </div>
 
+<!-- work mode: focus on one card, track time -->
+<div id="work" class="overlay">
+  <div class="dialog" style="text-align:center; width:min(460px, calc(100vw - 40px))">
+    <div class="hint" style="margin-bottom:4px">Working on</div>
+    <h3 id="workText" style="margin-bottom:2px"></h3>
+    <div id="workPrev" class="hint" style="min-height:18px"></div>
+    <div id="workClock" style="font-size:58px; font-weight:200; letter-spacing:-.02em; font-variant-numeric:tabular-nums; margin:10px 0 4px">00:00</div>
+    <div class="dlgrow">
+      <button class="dlg-merge" id="workToggle" onclick="workToggle()">Start</button>
+      <button class="dlg-new" onclick="workComplete()">✓ Complete</button>
+      <button class="dlg-cancel" onclick="closeWork()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- image viewer (lightbox) -->
 <div id="viewer" class="overlay" style="background:rgba(0,0,0,.88)">
   <div style="max-width:94vw; text-align:center">
@@ -1005,6 +1020,7 @@ function taskLi(t) {
   lab.append(cb, box);
 
   const sp = document.createElement('span'); sp.className = 't'; sp.textContent = t.text;
+  if (!t.done) { sp.style.cursor = 'pointer'; sp.title = 'Tap to focus on this task and track time'; sp.onclick = () => openWork(t); }
   const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
   del.onclick = () => { tasks.splice(tasks.indexOf(t), 1); saveAll(); };
   const att = document.createElement('button'); att.className = 'x up'; att.textContent = '📎';
@@ -1038,7 +1054,9 @@ function taskLi(t) {
   }
 
   const ts = document.createElement('div'); ts.className = 'tstamp';
-  ts.textContent = 'Added ' + fmtDate(t.createdAt) + (t.done && t.doneAt ? '  ·  ✓ Done ' + fmtDate(t.doneAt) : '');
+  ts.textContent = 'Added ' + fmtDate(t.createdAt)
+    + (t.done && t.doneAt ? '  ·  ✓ Done ' + fmtDate(t.doneAt) : '')
+    + (t.timeSpent ? '  ·  ⏱ ' + fmtDurLabel(t.timeSpent) : '');
   li.appendChild(ts);
 
   li.addEventListener('dragstart', e => {
@@ -1072,6 +1090,66 @@ function taskLi(t) {
 function isFileDrag(e) { return Array.from(e.dataTransfer.types || []).includes('Files'); }
 function clearMarks() { document.querySelectorAll('.insert-above,.insert-below,.dragover-file,.dragover-col')
   .forEach(x => x.classList.remove('insert-above','insert-below','dragover-file','dragover-col')); }
+
+/* ---- work mode: per-card time tracking ---- */
+let workTask = null, workTick = null, workStartMs = 0, workBase = 0;
+function fmtDur(s) {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  return h ? h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')
+           : String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+function fmtDurLabel(s) {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60);
+  return h ? h + 'h ' + m + 'm' : (m >= 1 ? m + 'm' : s + 's');
+}
+function curElapsed() { return workBase + (workStartMs ? (Date.now() - workStartMs) / 1000 : 0); }
+function paintWork() {
+  $('workClock').textContent = fmtDur(curElapsed());
+  $('workPrev').textContent = (workBase > 0 && !workStartMs) ? 'Logged so far: ' + fmtDurLabel(workBase) : ' ';
+}
+function openWork(t) {
+  workTask = t; workBase = t.timeSpent || 0; workStartMs = 0;
+  $('workText').textContent = t.text;
+  $('workToggle').textContent = workBase > 0 ? 'Resume' : 'Start';
+  paintWork();
+  $('work').classList.add('on');
+}
+function workToggle() {
+  if (workStartMs) {                    // pause — persist what's logged
+    workBase = curElapsed(); workStartMs = 0;
+    clearInterval(workTick); workTick = null;
+    workTask.timeSpent = Math.round(workBase); saveAll();
+    $('workToggle').textContent = 'Resume';
+  } else {                              // start / resume
+    workStartMs = Date.now();
+    workTick = setInterval(paintWork, 500);
+    $('workToggle').textContent = 'Pause';
+  }
+  paintWork();
+}
+function stopAndSave() {
+  if (workStartMs) { workBase = curElapsed(); workStartMs = 0; }
+  clearInterval(workTick); workTick = null;
+  if (workTask && workBase > 0) workTask.timeSpent = Math.round(workBase);
+}
+function closeWork() {
+  stopAndSave();
+  if (workTask) saveAll();
+  $('work').classList.remove('on'); workTask = null;
+}
+function workComplete() {
+  stopAndSave();
+  const t = workTask;
+  $('work').classList.remove('on'); workTask = null;
+  if (!t) return;
+  t.done = true; t.doneAt = Date.now();
+  const dc = doneColId();
+  if (dc && t.col !== dc) { t.prevCol = t.col; t.col = dc; }
+  bumpDone();
+  saveAll();
+}
 
 function moveToTop(t) {
   const idx = tasks.indexOf(t); if (idx < 0) return;
@@ -1226,6 +1304,8 @@ function buildReport() {
   L.push('');
   L.push('═══ SUMMARY ═══');
   L.push('Tasks completed:  ' + done.length + (daysWorked ? '  (across ' + daysWorked + ' active day' + (daysWorked > 1 ? 's' : '') + ')' : ''));
+  const totalTime = done.reduce((s, t) => s + (t.timeSpent || 0), 0);
+  L.push('Time tracked:     ' + (totalTime ? fmtDurLabel(totalTime) : '—'));
   L.push('Focus sessions:   ' + focus);
   L.push('Open items:       ' + open.length);
   L.push('');
@@ -1240,7 +1320,7 @@ function buildReport() {
       L.push('');
       L.push(fmtLong(t.doneAt) + '  (' + n + ')');
     }
-    L.push('  ✓ ' + t.text);
+    L.push('  ✓ ' + t.text + (t.timeSpent ? '  (' + fmtDurLabel(t.timeSpent) + ')' : ''));
   });
   L.push('');
   L.push('═══ OPEN ITEMS ═══');
@@ -1502,6 +1582,7 @@ function dupChoice(choice) {
 $('overlay').addEventListener('click', e => { if (e.target === $('overlay')) dupChoice('cancel'); });
 $('report').addEventListener('click', e => { if (e.target === $('report')) $('report').classList.remove('on'); });
 $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').classList.remove('on'); });
+$('work').addEventListener('click', e => { if (e.target === $('work')) closeWork(); });
 $('repPeriod').addEventListener('change', renderReport);
 $('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
 
