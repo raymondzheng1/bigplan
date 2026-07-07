@@ -255,8 +255,11 @@
     .seg { margin-bottom:16px; }
     .seg button { padding:10px 0; }
     .card { padding:16px; border-radius:20px; }
+    .addrow { gap:7px; }
     .addrow input, .durs input { font-size:16px; }  /* prevents iOS focus zoom */
-    .addrow button { padding:0 20px; min-height:46px; }
+    .addrow input { padding:13px 12px; }
+    .addrow button { padding:0 14px; min-height:46px; flex-shrink:0; }
+    .addrow button.filebtn { padding:0 12px; }
     .board { scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
     .col { flex:0 0 80vw; min-width:0; scroll-snap-align:start; }
     .taskcard { padding:13px 14px; }
