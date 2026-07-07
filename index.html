@@ -816,7 +816,7 @@ function exportData() {
   const out = {};
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k.startsWith('tk_')) out[k] = localStorage.getItem(k);
+    if (k.startsWith('tk_') && !META_KEYS.includes(k)) out[k] = localStorage.getItem(k); // data only — no passcode/sync metadata
   }
   const blob = new Blob([JSON.stringify({ app:'personal-toolkit', exported:new Date().toISOString(), data:out }, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
@@ -833,9 +833,15 @@ $('importfile').addEventListener('change', e => {
       if (!j || j.app !== 'personal-toolkit' || !j.data) { alert('Not a valid BigPlan backup file.'); return; }
       if (!confirm('Import backup from ' + (j.exported || 'unknown date') + '? This replaces current data (your passcode stays).')) return;
       const passHash = localStorage.getItem('tk_pass');
+      const trust = localStorage.getItem('tk_trust');
       Object.keys(localStorage).filter(k => k.startsWith('tk_')).forEach(k => localStorage.removeItem(k));
-      Object.entries(j.data).forEach(([k, v]) => localStorage.setItem(k, v));
-      if (passHash) localStorage.setItem('tk_pass', passHash); // keep this device's passcode
+      Object.entries(j.data).forEach(([k, v]) => {
+        if (k.startsWith('tk_') && !META_KEYS.includes(k)) localStorage.setItem(k, v); // never import stale sync metadata
+      });
+      if (passHash) localStorage.setItem('tk_pass', passHash);   // keep this device's passcode
+      if (trust) localStorage.setItem('tk_trust', trust);        // keep the 30-day device trust
+      localStorage.setItem('tk_updatedAt', JSON.stringify(Date.now())); // imported data is the NEWEST copy…
+      localStorage.setItem('tk_dirty', 'true');                         // …so it pushes to the cloud, not gets overwritten by it
       location.reload();
     } catch { alert('Could not read that file.'); }
   };
