@@ -122,6 +122,7 @@
     border-radius:7px; opacity:0; transition:all .18s; flex-shrink:0; }
   .taskcard:hover .x, .chip .x { opacity:1; }
   .x:hover { color:#ff3b30; background:rgba(255,59,48,.08); }
+  .x.up:hover { color:var(--blue); background:var(--tint); }
   .colhead .x { opacity:0; }
   .col:hover .colhead .x { opacity:1; }
   .addcol { flex:0 0 auto; border:1.5px dashed rgba(60,60,67,.2); background:none; border-radius:18px;
@@ -908,7 +909,9 @@ function initState() {
     if (!t.createdAt) t.createdAt = migBase + i;   // preserve existing relative order
     if (!t.col || !cols.some(c => c.id === t.col)) t.col = t.done ? (cols[cols.length-1] || cols[0]).id : cols[0].id;
   });
-  tasks.sort((a, b) => a.createdAt - b.createdAt); // default: oldest first (drag still overrides)
+  // NOTE: no sorting here — array order IS the user's chosen sequence and must survive
+  // reloads and cloud sync. (A createdAt re-sort here silently destroyed drag ordering.)
+  // Default remains oldest-first because new tasks append to the end.
   // retire the old default "In Progress" column: move its tasks to the first column
   const doing = cols.find(c => c.id === 'c-doing');
   if (doing && cols.length > 1) {
@@ -977,7 +980,15 @@ function taskLi(t) {
   const sp = document.createElement('span'); sp.className = 't'; sp.textContent = t.text;
   const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
   del.onclick = () => { tasks.splice(tasks.indexOf(t), 1); saveAll(); };
-  row.append(lab, sp, del); li.appendChild(row);
+  if (!t.done) {                        // move-to-top (not useful in the date-grouped Done column)
+    const up = document.createElement('button'); up.className = 'x up'; up.textContent = '⤒';
+    up.title = 'Move to top';
+    up.onclick = () => moveToTop(t);
+    row.append(lab, sp, up, del);
+  } else {
+    row.append(lab, sp, del);
+  }
+  li.appendChild(row);
 
   if (t.files.length) {
     const chips = document.createElement('div'); chips.className = 'chips';
@@ -1032,6 +1043,15 @@ function taskLi(t) {
 function isFileDrag(e) { return Array.from(e.dataTransfer.types || []).includes('Files'); }
 function clearMarks() { document.querySelectorAll('.insert-above,.insert-below,.dragover-file,.dragover-col')
   .forEach(x => x.classList.remove('insert-above','insert-below','dragover-file','dragover-col')); }
+
+function moveToTop(t) {
+  const idx = tasks.indexOf(t); if (idx < 0) return;
+  tasks.splice(idx, 1);
+  const firstIdx = tasks.findIndex(x => x.col === t.col);
+  tasks.splice(firstIdx < 0 ? tasks.length : firstIdx, 0, t);
+  saveAll();
+  toast('Moved to top');
+}
 
 function moveTask(id, target, before) {
   const t = tasks.find(x => x.id === id); if (!t || t === target) return;
