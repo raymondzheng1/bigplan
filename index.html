@@ -311,7 +311,8 @@
       </div>
     </div>
     <div class="hbtns">
-      <button class="ghost" onclick="exportData()">Export backup</button>
+      <button class="ghost" onclick="exportData()">Export</button>
+      <button class="ghost" onclick="cloudBackup()">Cloud backup</button>
       <button class="ghost" onclick="$('importfile').click()">Import</button>
       <button class="ghost" onclick="lockNow()">🔒 Lock</button>
       <input type="file" id="importfile" accept=".json,application/json" style="display:none">
@@ -907,12 +908,27 @@ function exportData() {
   a.download = 'bigplan-backup-' + todayKey() + '.json';
   a.click(); URL.revokeObjectURL(a.href);
 }
+async function cloudBackup() {
+  if (!getPass()) { toast('Unlock with the sync passcode first'); return; }
+  try {
+    const r = await fetch('./api/export', { headers: { 'x-app-pass': getPass() } });
+    if (!r.ok) throw 0;
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'bigplan-cloud-backup-' + todayKey() + '.json';
+    a.click(); URL.revokeObjectURL(a.href);
+    toast('Cloud backup downloaded (state + 14 daily snapshots)');
+  } catch { toast('Cloud backup failed — check you are online'); }
+}
 $('importfile').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = () => {
     try {
-      const j = JSON.parse(r.result);
+      let j = JSON.parse(r.result);
+      if (j && j.app === 'bigplan-cloud-backup' && j.current && j.current.data)
+        j = { app: 'personal-toolkit', exported: j.exported, data: j.current.data }; // restore cloud backups too
       if (!j || j.app !== 'personal-toolkit' || !j.data) { alert('Not a valid BigPlan backup file.'); return; }
       if (!confirm('Import backup from ' + (j.exported || 'unknown date') + '? This replaces current data (your passcode stays).')) return;
       const passHash = localStorage.getItem('tk_pass');

@@ -9,7 +9,8 @@
 
 ## Architecture
 - `index.html` is the entire client (inline CSS/JS by design — keep single-file). `api/state.js` is the entire server.
-- **Sync model (offline-first, LWW):** localStorage is the working copy. Every write marks dirty + debounce-pushes the whole `tk_*` blob to KV. Unlock / reconnect / 60s poll pulls; a strictly newer remote copy replaces local. Stale PUT → 409 + newer state; client adopts it. Previous blob kept at `bigplan:prev` (§2.3 Tier-B backup note: KV data is user-authored and NOT fully recreatable → prev-snapshot + client Export button are the backup story).
+- **Sync model (offline-first, LWW):** localStorage is the working copy. Every write marks dirty + debounce-pushes the whole `tk_*` blob to KV. Unlock / reconnect / 60s poll pulls; a strictly newer remote copy replaces local. Stale PUT → 409 + newer state; client adopts it. Previous blob kept at `bigplan:prev`.
+- **Backups (§2.3, KV data is user-authored):** four layers — (1) full local copy on every device; (2) `bigplan:prev` on every save; (3) daily rolling KV snapshots `bigplan:snap:<date>` written on the first save of each day, pruned to 14, try/catch-wrapped so they never fail the save; (4) token-gated `/api/export` + client "Cloud backup" button downloading state+prev+snapshots as one restorable JSON (Import accepts it). Monthly restore drill documented in README.
 - **File attachments never sync** (KV 1 MB cap): names/sizes sync, bytes stay device-local (`collectState` strips `f.data`; `applyRemote` re-attaches local bytes by task id + name).
 - KV env names: read **both** `KV_REST_API_URL`/`KV_REST_API_TOKEN` and `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` (§15 gotcha) — pinned by launch-check.
 - Passcode: verified server-side when online; SHA-256 hash cached locally for offline unlocks. A privacy gate, not encryption.

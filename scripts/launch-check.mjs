@@ -50,5 +50,12 @@ check(html.includes('syncPull') && html.includes('x-app-pass'), 'client sync eng
 check(sw.includes("/api/"), 'service worker never caches the sync API');
 JSON.parse(read('vercel.json')); check(true, 'vercel.json parses');
 
+console.log('backups (harness §2.3)');
+check(existsSync(resolve(ROOT, 'api/export.js')), 'token-gated /api/export exists');
+check(read('api/export.js').includes('timingSafeEqual'), 'export endpoint is passcode-gated');
+check(apiSrc.includes('bigplan:snap:'), 'daily rolling KV snapshots on save (keep 14)');
+check(html.includes('cloudBackup'), 'client Cloud backup button wired');
+check(html.includes('bigplan-cloud-backup'), 'Import restores cloud-backup files');
+
 if (failures) { console.error(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll launch checks passed.');

@@ -62,6 +62,19 @@ export default async function handler(req, res) {
     if (cur.result) await kv('/set/' + encodeURIComponent(PREV), { method: 'POST', body: cur.result });
     const setr = await kv('/set/' + encodeURIComponent(KEY), { method: 'POST', body: payload });
     if (setr && setr.error) { res.status(500).json({ error: 'kv write failed' }); return; }
+    // Daily rolling snapshot (harness §2.3): first save of each day is snapshotted,
+    // keep the last 14 days. Wrapped in try/catch — a snapshot hiccup never fails the save.
+    try {
+      const snapKey = 'bigplan:snap:' + new Date().toISOString().slice(0, 10);
+      const exists = await kv('/get/' + encodeURIComponent(snapKey));
+      if (!exists.result) {
+        await kv('/set/' + encodeURIComponent(snapKey), { method: 'POST', body: payload });
+        const keys = await kv('/keys/' + encodeURIComponent('bigplan:snap:*'));
+        const list = (keys.result || []).sort();
+        for (const k of list.slice(0, Math.max(0, list.length - 14)))
+          await kv('/del/' + encodeURIComponent(k));
+      }
+    } catch {}
     res.status(200).json({ ok: true, updatedAt: body.updatedAt });
     return;
   }

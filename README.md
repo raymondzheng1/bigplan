@@ -26,6 +26,17 @@ Raymond's one-year mission command center (Jul 1, 2026 → Jun 30, 2027). Kanban
 
 Changing the passcode later: edit `APP_PASSCODE` in Vercel → redeploy. (Devices that cached the old passcode for offline unlock will re-verify next time they're online.)
 
+## Backups (simple, layered)
+Your data is protected four ways, mostly automatic:
+1. **Every device holds a full local copy** (offline-first design).
+2. **The cloud keeps the previous version** of your data on every save (`bigplan:prev`).
+3. **Daily snapshots, automatic** — the first save of each day is snapshotted in the cloud; the last 14 days are kept. No setup, no cron.
+4. **Cloud backup button** (header) — downloads current state + previous version + all 14 snapshots as one JSON file. Save it somewhere safe (email/drive) occasionally.
+
+**Restore:** the Import button accepts both regular exports and cloud-backup files (it restores the current state; older snapshots are inside the file if ever needed).
+
+**Restore drill (harness §2.3 — do this once a month):** tap Cloud backup, then Import that same file. If your data reappears intact, your backup works. Takes 30 seconds.
+
 ## Releasing changes
 1. Edit `index.html` / `api/state.js`.
 2. **Bump `CACHE = 'bigplan-vN'` in `sw.js`** — installed clients won't update otherwise.
