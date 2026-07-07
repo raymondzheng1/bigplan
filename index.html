@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="BigPlan — Raymond's one-year mission command center. Tasks, habits, focus, notes. Works offline.">
+<meta name="theme-color" content="#0b0b0f">
+<title>BigPlan</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-icon.png">
+<style>
+  :root { color-scheme: light;
+    --bg:#fbfbfd; --ink:#1d1d1f; --sub:#86868b; --hair:rgba(60,60,67,.12);
+    --blue:#0071e3; --blue-h:#0077ed; --tint:rgba(0,113,227,.09);
+    --grad:linear-gradient(135deg,#0a84ff,#bf5af2);
+    --card:rgba(255,255,255,.72);
+    --spring:cubic-bezier(.34,1.4,.64,1);
+  }
+  * { box-sizing:border-box; margin:0; }
+  body {
+    background:var(--bg); color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Inter,sans-serif;
+    padding:max(44px, calc(24px + env(safe-area-inset-top))) 22px calc(60px + env(safe-area-inset-bottom));
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  body::before, body::after {
+    content:''; position:fixed; z-index:-1; border-radius:50%; filter:blur(90px); opacity:.5;
+    animation:drift 26s ease-in-out infinite alternate;
+  }
+  body::before { width:560px; height:560px; top:-220px; left:-140px;
+    background:radial-gradient(circle,#b8d4ff 0%,transparent 65%); }
+  body::after  { width:640px; height:640px; bottom:-280px; right:-180px;
+    background:radial-gradient(circle,#e4ccff 0%,#ffe1c2 55%,transparent 75%); animation-delay:-13s; }
+  @keyframes drift { from { transform:translate(0,0) scale(1); } to { transform:translate(70px,50px) scale(1.15); } }
+
+  .wrap { max-width:880px; margin:0 auto; transition:filter .3s; }
+  .wrap.blurred { filter:blur(16px) saturate(.8); pointer-events:none; user-select:none; }
+
+  header { margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; gap:14px; flex-wrap:wrap; }
+  .greet { font-size:34px; font-weight:700; letter-spacing:-.022em; line-height:1.15; }
+  .greet em { font-style:normal; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #today { color:var(--sub); font-size:15px; margin-top:4px; letter-spacing:-.01em; }
+  .hbtns { display:flex; gap:8px; }
+  .ghost { border:none; background:rgba(120,120,128,.12); color:var(--ink);
+    padding:8px 16px; border-radius:980px; cursor:pointer; font-size:13px; font-weight:500; transition:background .2s; }
+  .ghost:hover { background:rgba(120,120,128,.2); }
+
+  /* mission countdown */
+  .mission { position:relative; border-radius:22px; padding:22px 26px; margin-bottom:22px; overflow:hidden;
+    background:linear-gradient(120deg,#0b0b0f 0%,#1c1430 55%,#2a1a3f 100%); color:#fff;
+    box-shadow:0 16px 48px rgba(40,20,80,.25); }
+  .mission::before { content:''; position:absolute; inset:0;
+    background:radial-gradient(600px 180px at 80% -40%, rgba(120,80,255,.5), transparent 70%),
+               radial-gradient(400px 140px at 10% 130%, rgba(10,132,255,.35), transparent 70%); }
+  .mission > * { position:relative; }
+  .m-label { font-size:11px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:rgba(255,255,255,.55); }
+  .m-row { display:flex; justify-content:space-between; align-items:baseline; margin-top:10px; gap:12px; flex-wrap:wrap; }
+  .m-big { font-size:40px; font-weight:700; letter-spacing:-.03em; line-height:1;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif; }
+  .m-big small { font-size:15px; font-weight:500; color:rgba(255,255,255,.55); letter-spacing:-.01em; margin-left:6px; }
+  .m-right { text-align:right; }
+  .m-bar { margin-top:16px; height:6px; border-radius:99px; background:rgba(255,255,255,.14); overflow:hidden; }
+  .m-fill { height:100%; border-radius:99px; background:linear-gradient(90deg,#0a84ff,#bf5af2,#ff9f0a);
+    box-shadow:0 0 12px rgba(150,100,255,.8); transition:width 1s var(--spring); }
+  .m-foot { display:flex; justify-content:space-between; gap:16px; margin-top:8px; font-size:12px; color:rgba(255,255,255,.5); }
+  #quote { text-align:right; font-style:italic; }
+
+  /* segmented control */
+  .seg { position:relative; display:flex; background:rgba(120,120,128,.12); border-radius:12px; padding:2px; margin-bottom:24px; }
+  .seg .thumb { position:absolute; top:2px; left:2px; height:calc(100% - 4px); width:calc(25% - 2px);
+    background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.08);
+    transition:transform .35s var(--spring); }
+  .seg button { position:relative; z-index:1; flex:1; border:none; background:none; padding:9px 0;
+    font-size:14px; font-weight:500; color:var(--ink); cursor:pointer; letter-spacing:-.01em; opacity:.55; transition:opacity .2s; }
+  .seg button.on { opacity:1; font-weight:600; }
+
+  .card { background:var(--card); backdrop-filter:blur(28px) saturate(180%); -webkit-backdrop-filter:blur(28px) saturate(180%);
+    border:1px solid rgba(0,0,0,.05); border-radius:24px; padding:26px;
+    box-shadow:0 10px 44px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04); }
+  .pane { display:none; } .pane.on { display:block; animation:rise .35s var(--spring); }
+  @keyframes rise { from { opacity:0; transform:translateY(10px) scale(.995); } to { opacity:1; transform:none; } }
+
+  .addrow { display:flex; gap:10px; margin-bottom:16px; }
+  .addrow input { flex:1; border:none; border-radius:14px; padding:13px 16px; font-size:15px;
+    background:rgba(120,120,128,.10); transition:box-shadow .2s, background .2s; letter-spacing:-.01em; }
+  .addrow input::placeholder { color:var(--sub); }
+  .addrow input:focus { outline:none; background:#fff; box-shadow:0 0 0 4px var(--tint), 0 1px 4px rgba(0,0,0,.06); }
+  .addrow button { border:none; background:var(--blue); color:#fff; border-radius:980px;
+    padding:0 24px; cursor:pointer; font-size:14.5px; font-weight:500; transition:background .2s, transform .15s; }
+  .addrow button:hover { background:var(--blue-h); }
+  .addrow button:active { transform:scale(.96); }
+
+  /* kanban board */
+  .board { display:flex; gap:14px; overflow-x:auto; padding:4px 2px 12px; align-items:flex-start; }
+  .col { flex:0 0 236px; background:rgba(120,120,128,.08); border-radius:18px; padding:10px; transition:background .2s; }
+  .col.dragover-col { background:var(--tint); }
+  .colhead { display:flex; align-items:center; gap:6px; padding:4px 8px 10px; }
+  .colname { font-size:13px; font-weight:600; letter-spacing:-.01em; flex:1; cursor:pointer; }
+  .colname:hover { color:var(--blue); }
+  .colcount { color:var(--sub); font-size:12px; font-weight:500; }
+  .colbody { list-style:none; min-height:36px; display:flex; flex-direction:column; gap:8px; }
+  .taskcard { background:#fff; border-radius:13px; padding:11px 12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08), 0 0 1px rgba(0,0,0,.05); cursor:grab; transition:box-shadow .18s, transform .18s; }
+  .taskcard:hover { box-shadow:0 4px 14px rgba(0,0,0,.12); transform:translateY(-1px); }
+  .taskcard.dragging { opacity:.4; transform:rotate(1.5deg) scale(1.03); }
+  .taskcard.insert-above { box-shadow:0 -4px 0 -1px var(--blue), 0 1px 3px rgba(0,0,0,.08); }
+  .taskcard.insert-below { box-shadow:0 4px 0 -1px var(--blue), 0 1px 3px rgba(0,0,0,.08); }
+  .taskcard.dragover-file { outline:2px dashed var(--blue); outline-offset:-2px; background:var(--tint); }
+  .trow-main { display:flex; align-items:flex-start; gap:10px; }
+  .ck { position:relative; width:20px; height:20px; flex-shrink:0; cursor:pointer; margin-top:1px; }
+  .ck input { position:absolute; opacity:0; inset:0; cursor:pointer; }
+  .ck .box { position:absolute; inset:0; border-radius:50%; border:1.5px solid #c7c7cc; background:#fff;
+    transition:all .25s var(--spring); display:flex; align-items:center; justify-content:center; }
+  .ck .box::after { content:''; width:9px; height:5px; border-left:2px solid #fff; border-bottom:2px solid #fff;
+    transform:rotate(-45deg) scale(0); transition:transform .25s var(--spring); margin-top:-2px; }
+  .ck input:checked + .box { background:var(--grad); border-color:transparent; }
+  .ck input:checked + .box::after { transform:rotate(-45deg) scale(1); }
+  .taskcard .t { flex:1; font-size:13.5px; line-height:1.45; letter-spacing:-.01em; word-break:break-word; }
+  .taskcard.done .t { color:#c7c7cc; text-decoration:line-through; text-decoration-color:rgba(60,60,67,.25); }
+  .x { background:none; border:none; color:#c7c7cc; cursor:pointer; font-size:13px; padding:2px 5px;
+    border-radius:7px; opacity:0; transition:all .18s; flex-shrink:0; }
+  .taskcard:hover .x, .chip .x { opacity:1; }
+  .x:hover { color:#ff3b30; background:rgba(255,59,48,.08); }
+  .colhead .x { opacity:0; }
+  .col:hover .colhead .x { opacity:1; }
+  .addcol { flex:0 0 auto; border:1.5px dashed rgba(60,60,67,.2); background:none; border-radius:18px;
+    padding:14px 20px; color:var(--sub); font-size:13px; font-weight:500; cursor:pointer; transition:all .2s; white-space:nowrap; }
+  .addcol:hover { border-color:var(--blue); color:var(--blue); background:var(--tint); }
+
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { display:inline-flex; align-items:center; gap:5px; background:var(--tint); color:#0066cc;
+    border-radius:980px; padding:3px 11px; font-size:11.5px; font-weight:500; cursor:pointer;
+    max-width:100%; transition:background .18s; }
+  .chip:hover { background:rgba(0,113,227,.16); }
+  .chip span.n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip .x { font-size:10px; padding:0 1px; color:#8ab6e8; }
+  .chip.noData { background:rgba(120,120,128,.1); color:var(--sub); cursor:default; }
+
+  .taskfoot { display:flex; align-items:center; justify-content:space-between; margin-top:14px; padding:0 4px; }
+  .hint { color:var(--sub); font-size:13px; letter-spacing:-.01em; }
+  .clearbtn { border:none; background:none; color:var(--blue); font-size:13px; font-weight:500;
+    cursor:pointer; padding:5px 10px; border-radius:980px; transition:background .18s; }
+  .clearbtn:hover { background:var(--tint); }
+  #dropzone { border:1.5px dashed rgba(60,60,67,.22); border-radius:16px; padding:13px; text-align:center;
+    color:var(--sub); font-size:13px; margin-top:6px; transition:all .2s; letter-spacing:-.01em; }
+  #dropzone.dragover { border-color:var(--blue); background:var(--tint); color:var(--blue); }
+
+  /* overlays (duplicate dialog + celebration) */
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.32); backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; z-index:50; }
+  .overlay.on { display:flex; animation:fade .2s ease; }
+  @keyframes fade { from { opacity:0; } to { opacity:1; } }
+  .dialog { background:#fff; border-radius:22px; padding:28px; width:min(420px, calc(100vw - 48px));
+    box-shadow:0 24px 80px rgba(0,0,0,.3); animation:rise .3s var(--spring); }
+  .dialog h3 { font-size:19px; font-weight:700; letter-spacing:-.02em; margin-bottom:8px; }
+  .dialog p { color:var(--sub); font-size:14px; margin-bottom:6px; }
+  .dialog .q { background:rgba(120,120,128,.08); border-radius:12px; padding:10px 14px; font-size:14px;
+    margin:10px 0; color:var(--ink); }
+  .dlgrow { display:flex; gap:8px; margin-top:18px; }
+  .dlgrow button { flex:1; border:none; border-radius:12px; padding:11px 0; font-size:14px; font-weight:500;
+    cursor:pointer; transition:all .18s; }
+  .dlg-merge { background:var(--blue); color:#fff; }
+  .dlg-merge:hover { background:var(--blue-h); }
+  .dlg-new { background:rgba(120,120,128,.12); color:var(--ink); }
+  .dlg-new:hover { background:rgba(120,120,128,.2); }
+  .dlg-cancel { background:none; color:var(--sub); }
+  .dlg-cancel:hover { background:rgba(120,120,128,.1); }
+
+  /* celebration */
+  #celebrate .dialog { text-align:center; }
+  .celeb-emoji { font-size:56px; line-height:1; margin-bottom:12px; }
+  #celebrate h3 { font-size:24px; }
+  #celebrate p { font-size:15px; color:var(--sub); margin-top:6px; }
+  .celeb-btn { margin-top:20px; border:none; background:var(--blue); color:#fff; border-radius:980px;
+    padding:12px 34px; font-size:15px; font-weight:600; cursor:pointer; }
+  .celeb-btn:hover { background:var(--blue-h); }
+
+  /* toast */
+  #toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px);
+    background:rgba(29,29,31,.92); color:#fff; padding:11px 22px; border-radius:980px; font-size:14px;
+    font-weight:500; opacity:0; pointer-events:none; transition:all .3s var(--spring); z-index:60;
+    box-shadow:0 8px 30px rgba(0,0,0,.25); letter-spacing:-.01em; }
+  #toast.on { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* confetti canvas */
+  #fx { position:fixed; inset:0; pointer-events:none; z-index:70; }
+
+  /* passcode lock */
+  #lock { position:fixed; inset:0; z-index:90; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,#0b0b0f 0%,#151226 50%,#221636 100%); }
+  #lock::before { content:''; position:absolute; inset:0;
+    background:radial-gradient(700px 300px at 75% 10%, rgba(120,80,255,.35), transparent 70%),
+               radial-gradient(500px 260px at 15% 90%, rgba(10,132,255,.3), transparent 70%); }
+  .lockbox { position:relative; text-align:center; width:min(340px, calc(100vw - 48px)); animation:rise .4s var(--spring); }
+  .lockmark { width:76px; height:76px; margin:0 auto 18px; border-radius:24px; background:var(--grad);
+    display:flex; align-items:center; justify-content:center; box-shadow:0 12px 40px rgba(120,80,255,.45); }
+  .lockmark svg { width:38px; height:38px; }
+  .lockbox h2 { color:#fff; font-size:26px; font-weight:700; letter-spacing:-.02em; }
+  .lockbox .sub { color:rgba(255,255,255,.55); font-size:14px; margin:8px 0 22px; min-height:20px; }
+  #pass { width:100%; border:none; border-radius:14px; padding:14px; font-size:18px; text-align:center;
+    letter-spacing:6px; background:rgba(255,255,255,.1); color:#fff; outline:none; transition:box-shadow .2s; }
+  #pass::placeholder { letter-spacing:0; font-size:14px; color:rgba(255,255,255,.4); }
+  #pass:focus { box-shadow:0 0 0 3px rgba(10,132,255,.5); }
+  #lockbtn { margin-top:14px; width:100%; border:none; background:#fff; color:#0b0b0f; border-radius:14px;
+    padding:13px; font-size:15px; font-weight:600; cursor:pointer; transition:transform .15s, opacity .2s; }
+  #lockbtn:hover { opacity:.9; }
+  #lockbtn:active { transform:scale(.97); }
+  #lockerr { color:#ff6961; font-size:13px; margin-top:12px; min-height:18px; }
+  #forgot { display:inline-block; margin-top:14px; color:rgba(255,255,255,.4); font-size:12.5px;
+    background:none; border:none; cursor:pointer; }
+  #forgot:hover { color:rgba(255,255,255,.7); text-decoration:underline; }
+  .shake { animation:shake .4s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-9px)} 40%,80%{transform:translateX(9px)} }
+
+  /* ===== mobile-first ===== */
+  .taskcard { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  .ringwrap { width:min(280px,78vw) !important; height:min(280px,78vw) !important; }
+  .ringwrap svg { width:100%; height:100%; }
+  #clock { font-size:clamp(44px,17vw,72px) !important; }
+  @media (max-width:640px) {
+    body { padding:calc(18px + env(safe-area-inset-top)) 14px calc(40px + env(safe-area-inset-bottom)); }
+    header { flex-direction:column; align-items:stretch; gap:12px; margin-bottom:16px; }
+    .greet { font-size:26px; }
+    #today { font-size:13px; }
+    .hbtns { width:100%; }
+    .ghost { flex:1; padding:10px 6px; font-size:12.5px; text-align:center; }
+    .mission { padding:18px; border-radius:20px; margin-bottom:16px; }
+    .m-big { font-size:29px; }
+    .m-big small { font-size:12.5px; }
+    .m-foot { flex-direction:column; gap:4px; }
+    #quote { text-align:left; }
+    .seg { margin-bottom:16px; }
+    .seg button { padding:10px 0; }
+    .card { padding:16px; border-radius:20px; }
+    .addrow input, .durs input { font-size:16px; }  /* prevents iOS focus zoom */
+    .addrow button { padding:0 20px; min-height:46px; }
+    .board { scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
+    .col { flex:0 0 80vw; scroll-snap-align:start; }
+    .taskcard { padding:13px 14px; }
+    .taskcard .t { font-size:15px; }
+    .ck { width:23px; height:23px; }
+    .durs { gap:14px; }
+    #notes { min-height:300px; font-size:16px; }
+    .dialog { padding:22px; }
+  }
+  @media (hover:none) {
+    .x { opacity:1; }               /* no hover on touch — keep actions visible */
+    .colhead .x { opacity:.55; }
+    .taskcard:hover { transform:none; }
+    #dropzone { display:none; }     /* file drag-in is a desktop affordance */
+  }
+</style>
+</head>
+<body>
+
+<!-- passcode gate -->
+<div id="lock">
+  <div class="lockbox" id="lockbox">
+    <div class="lockmark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M7.5 6.5C5.4 8 4 10.4 4 13a8 8 0 1 0 16 0c0-2.6-1.4-5-3.5-6.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>
+    </div>
+    <h2>BigPlan</h2>
+    <div class="sub" id="locksub"></div>
+    <input id="pass" type="password" autocomplete="off" placeholder="Passcode">
+    <button id="lockbtn"></button>
+    <div id="lockerr"></div>
+    <button id="forgot" style="display:none">Passcode is set in Vercel · Reset this device</button>
+  </div>
+</div>
+
+<canvas id="fx"></canvas>
+<div id="toast"></div>
+
+<div class="wrap blurred" id="wrap">
+  <header>
+    <div>
+      <div class="greet" id="greet"></div>
+      <div id="today"></div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--sub)">
+        <span id="syncdot" style="width:8px;height:8px;border-radius:50%;background:#c7c7cc;display:inline-block"></span>
+        <span id="synclabel">Checking sync…</span>
+      </div>
+    </div>
+    <div class="hbtns">
+      <button class="ghost" onclick="exportData()">Export backup</button>
+      <button class="ghost" onclick="$('importfile').click()">Import</button>
+      <button class="ghost" onclick="location.reload()">🔒 Lock</button>
+      <input type="file" id="importfile" accept=".json,application/json" style="display:none">
+    </div>
+  </header>
+
+  <div class="mission">
+    <div class="m-label">One-Year Mission &nbsp;·&nbsp; Jul 1, 2026 → Jun 30, 2027</div>
+    <div class="m-row">
+      <div class="m-big" id="m-day"></div>
+      <div class="m-big m-right" id="m-left"></div>
+    </div>
+    <div class="m-bar"><div class="m-fill" id="m-fill" style="width:0%"></div></div>
+    <div class="m-foot"><span id="m-pct"></span><span id="quote"></span></div>
+  </div>
+
+  <div class="seg" id="seg">
+    <div class="thumb" id="thumb"></div>
+    <button data-p="tasks" class="on">Tasks</button>
+    <button data-p="habits">Habits</button>
+    <button data-p="timer">Focus</button>
+    <button data-p="notes">Notes</button>
+  </div>
+
+  <div class="card pane on" id="p-tasks">
+    <div class="addrow"><input id="ti" placeholder="Add a task…"><button onclick="addTask()">Add</button></div>
+    <div class="board" id="board"></div>
+    <div id="dropzone">Drop files here to create a task — or drop onto a card to attach</div>
+    <div class="taskfoot">
+      <span class="hint" id="tstat"></span>
+      <button class="clearbtn" onclick="clearCompleted()">Clear Completed</button>
+    </div>
+  </div>
+
+  <div class="card pane" id="p-habits">
+    <div class="addrow"><input id="hi" placeholder="Add a habit…"><button onclick="addHabit()">Add</button></div>
+    <table class="hab" id="ht" style="width:100%;border-collapse:collapse"></table>
+    <div class="hint" style="margin-top:14px">Tap a circle to mark the day done. Streaks count consecutive days.</div>
+  </div>
+
+  <div class="card pane" id="p-timer">
+    <div class="timer" style="text-align:center;padding:10px 0 4px">
+      <div class="ringwrap" style="position:relative;width:280px;height:280px;margin:0 auto 4px">
+        <svg width="280" height="280" viewBox="0 0 280 280" style="transform:rotate(-90deg);display:block">
+          <defs>
+            <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#0a84ff"/>
+              <stop offset="100%" stop-color="#bf5af2"/>
+            </linearGradient>
+          </defs>
+          <circle cx="140" cy="140" r="128" style="fill:none;stroke:rgba(120,120,128,.14);stroke-width:5"/>
+          <circle id="ring" cx="140" cy="140" r="128" style="fill:none;stroke:url(#rg);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .6s linear"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center">
+          <div id="clock" style="font-size:72px;font-weight:200;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1">25:00</div>
+          <div id="mode" style="color:var(--sub);font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin-top:10px;font-weight:600">Focus</div>
+        </div>
+      </div>
+      <div class="trow" style="display:flex;gap:10px;justify-content:center;margin-top:22px;flex-wrap:wrap">
+        <button class="tbtn primary" id="startbtn" onclick="toggleTimer()">Start</button>
+        <button class="tbtn" onclick="resetTimer()">Reset</button>
+        <button class="tbtn" onclick="switchMode()">Switch</button>
+        <button class="tbtn" id="stopalarm" onclick="stopAlarm()" style="display:none;background:#ff3b30;color:#fff;animation:pulse .8s infinite alternate">Stop Alarm</button>
+      </div>
+      <div class="durs" style="display:flex;gap:26px;justify-content:center;margin-top:24px;color:var(--sub);font-size:13.5px;align-items:center;flex-wrap:wrap">
+        <label>Focus <input type="number" id="focusMin" min="1" max="180"> min</label>
+        <label>Break <input type="number" id="breakMin" min="1" max="60"> min</label>
+      </div>
+      <div id="sessions" style="margin-top:18px;color:var(--sub);font-size:13.5px"></div>
+    </div>
+  </div>
+
+  <div class="card pane" id="p-notes">
+    <textarea id="notes" placeholder="Write anything — autosaves as you type…"></textarea>
+    <div id="saved"></div>
+  </div>
+</div>
+
+<style>
+  /* timer buttons + habits + notes (kept close to their markup) */
+  .tbtn { border:none; background:rgba(120,120,128,.12); border-radius:980px; padding:11px 24px; cursor:pointer;
+    font-size:14.5px; font-weight:500; color:var(--ink); transition:background .2s, transform .15s; }
+  .tbtn:hover { background:rgba(120,120,128,.2); }
+  .tbtn:active { transform:scale(.96); }
+  .tbtn.primary { background:var(--blue); color:#fff; min-width:118px; }
+  .tbtn.primary:hover { background:var(--blue-h); }
+  @keyframes pulse { from { opacity:1; } to { opacity:.55; } }
+  .durs input { width:62px; border:none; border-radius:10px; padding:8px; font-size:14.5px; text-align:center;
+    background:rgba(120,120,128,.10); }
+  .durs input:focus { outline:none; background:#fff; box-shadow:0 0 0 3px var(--tint); }
+  table.hab th, table.hab td { text-align:center; padding:12px 4px; font-size:13px; position:relative; }
+  table.hab tr + tr td::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:var(--hair); }
+  table.hab th { color:var(--sub); font-weight:500; font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; }
+  table.hab th:first-child, table.hab td:first-child { text-align:left; padding-left:6px; }
+  table.hab th.today-col { color:var(--blue); font-weight:700; }
+  table.hab .x { opacity:1; }
+  .dot { width:26px; height:26px; border-radius:50%; border:1.5px solid #d2d2d7; background:#fff;
+    cursor:pointer; display:inline-flex; align-items:center; justify-content:center; vertical-align:middle;
+    transition:all .22s var(--spring); }
+  .dot::after { content:''; width:10px; height:5px; border-left:2px solid #fff; border-bottom:2px solid #fff;
+    transform:rotate(-45deg) scale(0); transition:transform .22s var(--spring); margin-top:-2px; }
+  .dot:hover { transform:scale(1.18); border-color:var(--blue); }
+  .dot.hit { background:var(--grad); border-color:transparent; }
+  .dot.hit::after { transform:rotate(-45deg) scale(1); }
+  .streak { color:var(--sub); font-size:12px; margin-left:8px; white-space:nowrap; font-weight:500; }
+  #notes { width:100%; min-height:380px; border:none; border-radius:16px; padding:18px;
+    font:15px/1.7 inherit; resize:vertical; background:rgba(120,120,128,.08); letter-spacing:-.01em; }
+  #notes:focus { outline:none; background:#fff; box-shadow:0 0 0 4px var(--tint); }
+  #saved { color:#c7c7cc; font-size:12px; margin-top:10px; text-align:right; }
+</style>
+
+<!-- duplicate-task dialog -->
+<div id="overlay" class="overlay">
+  <div class="dialog">
+    <h3>Similar task already exists</h3>
+    <p>You already have:</p>
+    <div class="q" id="dupOld"></div>
+    <p>You're adding:</p>
+    <div class="q" id="dupNew"></div>
+    <div class="dlgrow">
+      <button class="dlg-merge" onclick="dupChoice('merge')">Merge</button>
+      <button class="dlg-new" onclick="dupChoice('new')">Create Anyway</button>
+      <button class="dlg-cancel" onclick="dupChoice('cancel')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- celebration dialog -->
+<div id="celebrate" class="overlay">
+  <div class="dialog">
+    <div class="celeb-emoji" id="celebEmoji">🎉</div>
+    <h3 id="celebTitle"></h3>
+    <p id="celebMsg"></p>
+    <button class="celeb-btn" onclick="$('celebrate').classList.remove('on')">Keep going</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const META_KEYS = ['tk_pass', 'tk_dirty', 'tk_updatedAt'];
+const store = (k, v) => {
+  try { localStorage.setItem(k, JSON.stringify(v)); }
+  catch (e) { alert('Storage is full — could not save. Try removing large file attachments or export a backup.'); return; }
+  if (k.startsWith('tk_') && !META_KEYS.includes(k)) markDirty();
+};
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const dkey = d => d.toISOString().slice(0,10);
+const todayKey = () => dkey(new Date(Date.now() - new Date().getTimezoneOffset()*60000));
+const uid = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+
+/* ============ SHA-256 (public-domain style compact implementation) ============ */
+function sha256(input) {
+  const ascii = unescape(encodeURIComponent(input));
+  function rr(v, a) { return (v >>> a) | (v << (32 - a)); }
+  const maxWord = Math.pow(2, 32);
+  let result = '';
+  const words = [], asciiBitLength = ascii.length * 8;
+  let hash = sha256.h = sha256.h || [], k = sha256.k = sha256.k || [];
+  let primeCounter = k.length;
+  const isComposite = {};
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (let i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+      hash[primeCounter] = (Math.pow(candidate, .5) * maxWord) | 0;
+      k[primeCounter++] = (Math.pow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+  let a = ascii + '\x80';
+  while (a.length % 64 - 56) a += '\x00';
+  for (let i = 0; i < a.length; i++) {
+    const j = a.charCodeAt(i);
+    if (j >> 8) return null;
+    words[i >> 2] |= j << ((3 - i) % 4) * 8;
+  }
+  words[words.length] = ((asciiBitLength / maxWord) | 0);
+  words[words.length] = (asciiBitLength);
+  for (let j = 0; j < words.length;) {
+    const w = words.slice(j, j += 16);
+    const oldHash = hash;
+    hash = hash.slice(0, 8);
+    for (let i = 0; i < 64; i++) {
+      const w15 = w[i - 15], w2 = w[i - 2];
+      const A = hash[0], e = hash[4];
+      const temp1 = hash[7]
+        + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25))
+        + ((e & hash[5]) ^ ((~e) & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (w[i - 16] + (rr(w15, 7) ^ rr(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rr(w2, 17) ^ rr(w2, 19) ^ (w2 >>> 10))) | 0);
+      const temp2 = (rr(A, 2) ^ rr(A, 13) ^ rr(A, 22)) + ((A & hash[1]) ^ (A & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (let i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+  }
+  for (let i = 0; i < 8; i++) {
+    for (let j = 3; j + 1; j--) {
+      const b = (hash[i] >> (j * 8)) & 255;
+      result += ((b < 16) ? 0 : '') + b.toString(16);
+    }
+  }
+  return result;
+}
+
+/* ============ cloud sync engine (offline-first, /api/state, LWW) ============ */
+/* localStorage is the working copy. Edits mark dirty + debounce-push to the cloud.
+   Unlock / reconnect / every 60s: pull; newer remote copy replaces local.
+   File attachment payloads are DEVICE-LOCAL (too big for KV) — names sync, bytes don't. */
+let pushT = null;
+function markDirty() {
+  try {
+    localStorage.setItem('tk_updatedAt', JSON.stringify(Date.now()));
+    localStorage.setItem('tk_dirty', 'true');
+  } catch {}
+  clearTimeout(pushT); pushT = setTimeout(syncPush, 1800);
+}
+function getPass() { try { return sessionStorage.getItem('tk_sess') || null; } catch { return null; } }
+function setPassSess(v) { try { sessionStorage.setItem('tk_sess', v); } catch {} }
+function collectState() {
+  const data = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.startsWith('tk_') && !META_KEYS.includes(k)) data[k] = localStorage.getItem(k);
+  }
+  try { // strip attachment payloads before upload
+    const t = JSON.parse(data.tk_tasks || '[]');
+    t.forEach(x => (x.files || []).forEach(f => { delete f.data; }));
+    data.tk_tasks = JSON.stringify(t);
+  } catch {}
+  return data;
+}
+function applyRemote(data) {
+  const localFiles = {};
+  try { // keep this device's attachment bytes across the swap
+    JSON.parse(localStorage.getItem('tk_tasks') || '[]')
+      .forEach(t => (t.files || []).forEach(f => { if (f.data) localFiles[t.id + '|' + f.name] = f.data; }));
+  } catch {}
+  Object.keys(localStorage).filter(k => k.startsWith('tk_') && !META_KEYS.includes(k))
+    .forEach(k => localStorage.removeItem(k));
+  Object.entries(data).forEach(([k, v]) => {
+    if (k.startsWith('tk_') && !META_KEYS.includes(k)) localStorage.setItem(k, v);
+  });
+  try {
+    const t = JSON.parse(localStorage.getItem('tk_tasks') || '[]');
+    t.forEach(x => (x.files || []).forEach(f => { const d = localFiles[x.id + '|' + f.name]; if (d) f.data = d; }));
+    localStorage.setItem('tk_tasks', JSON.stringify(t));
+  } catch {}
+}
+function setSyncUI(state) {
+  const el = $('syncdot'); if (!el) return;
+  const m = { synced:['#30d158','Synced to cloud'], offline:['#ff9f0a','Offline — will sync when online'],
+    syncing:['#0a84ff','Syncing…'], error:['#ff3b30','Sync error — retrying'], off:['#c7c7cc','Local only (no sync server)'] };
+  const [c, t] = m[state] || m.off;
+  el.style.background = c; $('synclabel').textContent = t;
+}
+async function api(method, body, pass) {
+  return fetch('./api/state', {
+    method,
+    headers: { 'x-app-pass': pass ?? getPass() ?? '', 'content-type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+}
+async function syncPush() {
+  if (!getPass() || !navigator.onLine) { setSyncUI(navigator.onLine ? 'off' : 'offline'); return; }
+  if (localStorage.getItem('tk_dirty') !== 'true') return;
+  setSyncUI('syncing');
+  try {
+    const r = await api('PUT', { updatedAt: load('tk_updatedAt', 0), data: collectState() });
+    if (r.status === 409) { // another device saved something newer — adopt it
+      const j = await r.json();
+      if (j && j.state) {
+        applyRemote(j.state.data);
+        localStorage.setItem('tk_updatedAt', JSON.stringify(j.state.updatedAt));
+        localStorage.setItem('tk_dirty', 'false');
+        toast('Updated with a newer copy from the cloud');
+        setTimeout(() => location.reload(), 700);
+      }
+      return;
+    }
+    if (!r.ok) throw 0;
+    localStorage.setItem('tk_dirty', 'false');
+    setSyncUI('synced');
+  } catch { setSyncUI(navigator.onLine ? 'error' : 'offline'); }
+}
+async function syncPull() {
+  if (!getPass() || !navigator.onLine) return false;
+  try {
+    const r = await api('GET');
+    if (!r.ok) { setSyncUI(r.status === 503 ? 'off' : 'error'); return false; }
+    const j = await r.json();
+    const remote = j && j.state;
+    const localAt = load('tk_updatedAt', 0);
+    if (remote && remote.updatedAt > localAt) {
+      applyRemote(remote.data);
+      localStorage.setItem('tk_updatedAt', JSON.stringify(remote.updatedAt));
+      localStorage.setItem('tk_dirty', 'false');
+      setSyncUI('synced');
+      return true;
+    }
+    if (localStorage.getItem('tk_dirty') === 'true') syncPush(); else setSyncUI('synced');
+    return false;
+  } catch { setSyncUI('error'); return false; }
+}
+addEventListener('online', () => {
+  if (localStorage.getItem('tk_dirty') === 'true') syncPush();
+  else syncPull().then(ch => { if (ch) location.reload(); });
+});
+addEventListener('offline', () => setSyncUI('offline'));
+setInterval(() => {
+  if (!booted) return;
+  if (localStorage.getItem('tk_dirty') === 'true') syncPush();
+  else syncPull().then(ch => { if (ch) location.reload(); });
+}, 60000);
+
+/* ============ passcode gate ============ */
+/* The passcode is set SERVER-SIDE (APP_PASSCODE in Vercel — same pattern as the
+   Translator app) and verified against /api/state. A hash is cached locally so you
+   can unlock OFFLINE after the first online unlock. Not encryption — a privacy gate. */
+let lockBusy = false;
+function initLock() {
+  $('locksub').textContent = 'Enter your passcode';
+  $('lockbtn').textContent = 'Unlock';
+  $('forgot').style.display = 'inline-block';
+  $('pass').focus();
+}
+async function lockSubmit() {
+  if (lockBusy) return; lockBusy = true; $('lockbtn').textContent = '…';
+  const v = $('pass').value;
+  const fail = m => { $('lockerr').textContent = m; $('lockbox').classList.add('shake');
+    setTimeout(() => $('lockbox').classList.remove('shake'), 450); $('pass').value = ''; $('pass').focus(); };
+  const done = () => { lockBusy = false; $('lockbtn').textContent = 'Unlock'; };
+  if (!v) { fail('Enter your passcode.'); done(); return; }
+
+  let serverStatus = null;
+  if (navigator.onLine) {
+    try { serverStatus = (await api('GET', null, v)).status; } catch { serverStatus = null; }
+  }
+  if (serverStatus === 200) {           // server-verified: cache hash for offline unlocks
+    try { localStorage.setItem('tk_pass', JSON.stringify(sha256(v))); } catch {}
+    setPassSess(v);
+    await syncPull();                   // adopt the newest cloud copy before showing the app
+    unlock(); done(); return;
+  }
+  if (serverStatus === 401) { fail('Wrong passcode.'); done(); return; }
+
+  const cached = load('tk_pass', null); // offline / no server: fall back to cached hash
+  if (cached && sha256(v) === cached) {
+    setPassSess(v); unlock();
+    setSyncUI(serverStatus === 503 ? 'off' : 'offline');
+    done(); return;
+  }
+  if (!cached) {
+    if (serverStatus === 503 &&        // no sync server: allow local-only mode
+        confirm('No sync server is configured. Use this passcode for THIS DEVICE only (local mode, no cloud sync)?')) {
+      try { localStorage.setItem('tk_pass', JSON.stringify(sha256(v))); } catch {}
+      unlock(); setSyncUI('off'); done(); return;
+    }
+    fail(navigator.onLine
+      ? 'Could not verify. Check the sync server is set up (APP_PASSCODE in Vercel).'
+      : 'First unlock on a new device needs internet.');
+    done(); return;
+  }
+  fail('Wrong passcode.'); done();
+}
+function unlock() {
+  $('lock').style.display = 'none';
+  $('wrap').classList.remove('blurred');
+  boot();
+  checkMilestones();
+}
+$('lockbtn').onclick = lockSubmit;
+$('pass').addEventListener('keydown', e => { if (e.key === 'Enter') lockSubmit(); });
+$('forgot').onclick = () => {
+  if (!confirm('The passcode itself is changed in Vercel (APP_PASSCODE env var + redeploy).\n\nReset THIS DEVICE instead? It erases local data on this device only — the cloud copy stays.')) return;
+  if (!confirm('Really sure? Local data on this device will be erased.')) return;
+  Object.keys(localStorage).filter(k => k.startsWith('tk_')).forEach(k => localStorage.removeItem(k));
+  try { sessionStorage.removeItem('tk_sess'); } catch {}
+  location.reload();
+};
+initLock();
+
+/* ============ confetti + toast + celebrate ============ */
+const fx = $('fx'), fctx = fx.getContext('2d');
+let parts = [], fxRun = false;
+function sizeFx() { fx.width = innerWidth; fx.height = innerHeight; }
+addEventListener('resize', sizeFx); sizeFx();
+function confetti(n = 140) {
+  const colors = ['#0a84ff', '#bf5af2', '#ff9f0a', '#30d158', '#ff375f', '#ffd60a'];
+  for (let i = 0; i < n; i++) parts.push({
+    x: Math.random() * fx.width, y: -20 - Math.random() * fx.height * .25,
+    w: 6 + Math.random() * 6, h: 8 + Math.random() * 8, c: colors[i % colors.length],
+    vy: 2 + Math.random() * 3.5, vx: -2 + Math.random() * 4,
+    r: Math.random() * Math.PI, vr: -.15 + Math.random() * .3, o: 1
+  });
+  if (!fxRun) { fxRun = true; requestAnimationFrame(tickFx); }
+}
+function tickFx() {
+  fctx.clearRect(0, 0, fx.width, fx.height);
+  parts.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .05; p.r += p.vr; if (p.y > fx.height * .7) p.o -= .04; });
+  parts = parts.filter(p => p.o > 0 && p.y < fx.height + 40);
+  parts.forEach(p => { fctx.save(); fctx.globalAlpha = Math.max(p.o, 0); fctx.translate(p.x, p.y);
+    fctx.rotate(p.r); fctx.fillStyle = p.c; fctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); fctx.restore(); });
+  if (parts.length) requestAnimationFrame(tickFx);
+  else { fxRun = false; fctx.clearRect(0, 0, fx.width, fx.height); }
+}
+let toastT;
+function toast(msg) {
+  $('toast').textContent = msg; $('toast').classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.remove('on'), 2600);
+}
+function celebrate(emoji, title, msg) {
+  $('celebEmoji').textContent = emoji; $('celebTitle').textContent = title; $('celebMsg').textContent = msg;
+  $('celebrate').classList.add('on');
+  confetti(260);
+}
+
+/* ============ mission + daily quote + milestones ============ */
+const QUOTES = [
+  'Discipline is choosing what you want most over what you want now.',
+  'A year from now you’ll wish you had started today. You did.',
+  'Small daily wins compound into unrecognizable results.',
+  'Hard choices, easy life. Easy choices, hard life.',
+  'You don’t need more time — you need more focus.',
+  'The plan works if you work the plan.',
+  'Done is better than perfect.',
+  'Show up, especially when you don’t feel like it.',
+  'Big things are built one boring day at a time.',
+  'Fall in love with the process; the results will follow.',
+  'What you do every day matters more than what you do once in a while.',
+  'Momentum beats motivation.',
+  'Direction over speed.',
+  'One task at a time. That’s the whole secret.',
+  'Future you is watching. Make them proud.',
+  'Consistency is a superpower.',
+  'Start before you’re ready.',
+  'Protect the streak.',
+  'Make it so good they can’t ignore you.',
+  'The best time to plant a tree was 20 years ago. The second best time is now.'
+];
+let missionDayN = 1;
+(function mission() {
+  const start = new Date(2026, 6, 1), end = new Date(2027, 5, 30);
+  const n = new Date(); const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  const total = Math.round((end - start) / 864e5) + 1;
+  const passed = Math.max(0, Math.min(total, Math.round((today - start) / 864e5)));
+  missionDayN = Math.max(1, Math.min(total, passed + 1));
+  const left = Math.max(0, Math.round((end - today) / 864e5));
+  $('m-day').innerHTML = 'Day ' + missionDayN + '<small>of ' + total + '</small>';
+  $('m-left').innerHTML = left + '<small>days left</small>';
+  const pct = (passed / total) * 100;
+  $('m-pct').textContent = pct.toFixed(1) + '% elapsed';
+  const doy = Math.floor((today - new Date(today.getFullYear(), 0, 0)) / 864e5);
+  $('quote').textContent = '“' + QUOTES[doy % QUOTES.length] + '”';
+  requestAnimationFrame(() => setTimeout(() => { $('m-fill').style.width = Math.max(pct, 0.5) + '%'; }, 80));
+})();
+
+const DAY_MILESTONES = {
+  30: 'One month in. The hardest part — starting — is already behind you.',
+  60: 'Two months of showing up. This is becoming who you are.',
+  100: '💯 days into the mission. That is serious commitment.',
+  150: '150 days. This is a lifestyle now, not an experiment.',
+  182: 'HALFWAY. Look back at how far you’ve come — then look forward.',
+  200: '200 days deep. Most people never get here.',
+  250: '250 — the finish line is on the horizon. Push.',
+  300: '300 days. You are in legacy territory.',
+  330: 'Final month. Empty the tank.',
+  350: 'Two weeks left. Sprint like it matters — because it does.',
+  365: '365 DAYS. Whatever the outcome — you showed up for a whole year. 🎇'
+};
+function checkMilestones() {
+  const seen = load('tk_mil', {});
+  if (DAY_MILESTONES[missionDayN] && !seen['day' + missionDayN]) {
+    seen['day' + missionDayN] = true; store('tk_mil', seen);
+    setTimeout(() => celebrate('🚀', 'Day ' + missionDayN + '!', DAY_MILESTONES[missionDayN]), 600);
+  }
+}
+const TASK_MILESTONES = {
+  1: 'First one down. Every empire starts with task #1. 🎉',
+  5: 'Five tasks done — you’ve got momentum.',
+  10: '10 tasks crushed 💪',
+  25: '25 done. You clearly mean business.',
+  50: 'FIFTY. Half a hundred tasks conquered. 🏆',
+  100: '100 TASKS COMPLETED. Absolutely unstoppable.',
+  200: '200!! They should name a productivity method after you.'
+};
+function bumpDone() {
+  const n = load('tk_donecount', 0) + 1; store('tk_donecount', n);
+  if (TASK_MILESTONES[n]) celebrate('🏅', 'Achievement unlocked', TASK_MILESTONES[n]);
+  else { toast(pick(['Nice. ✅', 'Done and dusted.', 'One step closer to the big thing.', 'Keep going, Raymond.', 'That’s how it’s done.'])); confetti(70); }
+}
+
+/* greeting */
+const hNow = new Date().getHours();
+$('greet').innerHTML = (hNow < 12 ? 'Good morning' : hNow < 18 ? 'Good afternoon' : 'Good evening') + ', <em>Raymond</em>.';
+$('today').textContent = new Date().toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric' });
+
+/* segmented control */
+const segBtns = Array.from(document.querySelectorAll('.seg button'));
+segBtns.forEach((b, i) => b.onclick = () => {
+  segBtns.forEach(x => x.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); $('p-' + b.dataset.p).classList.add('on');
+  $('thumb').style.transform = `translateX(${i * 100}%)`;
+});
+
+/* ---- export / import ---- */
+function exportData() {
+  const out = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.startsWith('tk_')) out[k] = localStorage.getItem(k);
+  }
+  const blob = new Blob([JSON.stringify({ app:'personal-toolkit', exported:new Date().toISOString(), data:out }, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bigplan-backup-' + todayKey() + '.json';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+$('importfile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const j = JSON.parse(r.result);
+      if (!j || j.app !== 'personal-toolkit' || !j.data) { alert('Not a valid BigPlan backup file.'); return; }
+      if (!confirm('Import backup from ' + (j.exported || 'unknown date') + '? This replaces current data (your passcode stays).')) return;
+      const passHash = localStorage.getItem('tk_pass');
+      Object.keys(localStorage).filter(k => k.startsWith('tk_')).forEach(k => localStorage.removeItem(k));
+      Object.entries(j.data).forEach(([k, v]) => localStorage.setItem(k, v));
+      if (passHash) localStorage.setItem('tk_pass', passHash); // keep this device's passcode
+      location.reload();
+    } catch { alert('Could not read that file.'); }
+  };
+  r.readAsText(f);
+  e.target.value = '';
+});
+
+/* ============ kanban tasks ============ */
+const MAX_FILE = 1.5 * 1024 * 1024;
+let cols = load('tk_cols', null) || [
+  { id: 'c-todo', name: 'To Do' },
+  { id: 'c-doing', name: 'In Progress' },
+  { id: 'c-done', name: 'Done' }
+];
+let tasks = load('tk_tasks', []);
+tasks.forEach(t => {
+  if (!t.files) t.files = [];
+  if (!t.id) t.id = uid();
+  if (!t.col || !cols.some(c => c.id === t.col)) t.col = t.done ? (cols[cols.length-1] || cols[0]).id : cols[0].id;
+});
+
+function saveAll() { store('tk_tasks', tasks); store('tk_cols', cols); renderBoard(); }
+
+let draggedId = null;
+
+function taskLi(t) {
+  const li = document.createElement('li');
+  li.className = 'taskcard' + (t.done ? ' done' : '');
+  li.dataset.tid = t.id;
+  li.draggable = true;
+  touchDragInit(li, t);
+  const row = document.createElement('div'); row.className = 'trow-main';
+
+  const lab = document.createElement('label'); lab.className = 'ck';
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = t.done;
+  cb.onchange = () => { t.done = cb.checked; if (cb.checked) bumpDone(); setTimeout(saveAll, 220); };
+  const box = document.createElement('span'); box.className = 'box';
+  lab.append(cb, box);
+
+  const sp = document.createElement('span'); sp.className = 't'; sp.textContent = t.text;
+  const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
+  del.onclick = () => { tasks.splice(tasks.indexOf(t), 1); saveAll(); };
+  row.append(lab, sp, del); li.appendChild(row);
+
+  if (t.files.length) {
+    const chips = document.createElement('div'); chips.className = 'chips';
+    t.files.forEach((f, fi) => {
+      const c = document.createElement('span');
+      c.className = 'chip' + (f.data ? '' : ' noData');
+      c.title = f.data ? 'Click to download' : 'Reference only (over 1.5 MB, content not stored)';
+      const n = document.createElement('span'); n.className = 'n';
+      n.textContent = '📎 ' + f.name + ' (' + fmtSize(f.size) + ')';
+      c.appendChild(n);
+      if (f.data) c.onclick = ev => { if (ev.target.classList.contains('x')) return;
+        const a = document.createElement('a'); a.href = f.data; a.download = f.name; a.click(); };
+      const rm = document.createElement('button'); rm.className = 'x'; rm.textContent = '✕';
+      rm.onclick = ev => { ev.stopPropagation(); t.files.splice(fi, 1); saveAll(); };
+      c.appendChild(rm); chips.appendChild(c);
+    });
+    li.appendChild(chips);
+  }
+
+  li.addEventListener('dragstart', e => {
+    draggedId = t.id;
+    e.dataTransfer.setData('text/plain', t.id);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => li.classList.add('dragging'), 0);
+  });
+  li.addEventListener('dragend', () => { draggedId = null; li.classList.remove('dragging'); clearMarks(); });
+
+  li.addEventListener('dragover', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (isFileDrag(e)) { li.classList.add('dragover-file'); return; }
+    if (!draggedId || draggedId === t.id) return;
+    const r = li.getBoundingClientRect();
+    const above = (e.clientY - r.top) < r.height / 2;
+    li.classList.toggle('insert-above', above);
+    li.classList.toggle('insert-below', !above);
+  });
+  li.addEventListener('dragleave', () => { li.classList.remove('dragover-file', 'insert-above', 'insert-below'); });
+  li.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (isFileDrag(e)) { li.classList.remove('dragover-file'); attachFiles(t, e.dataTransfer.files); return; }
+    const above = li.classList.contains('insert-above');
+    li.classList.remove('insert-above', 'insert-below');
+    moveTask(draggedId, t, above);
+  });
+  return li;
+}
+
+function isFileDrag(e) { return Array.from(e.dataTransfer.types || []).includes('Files'); }
+function clearMarks() { document.querySelectorAll('.insert-above,.insert-below,.dragover-file,.dragover-col')
+  .forEach(x => x.classList.remove('insert-above','insert-below','dragover-file','dragover-col')); }
+
+function moveTask(id, target, before) {
+  const t = tasks.find(x => x.id === id); if (!t || t === target) return;
+  tasks.splice(tasks.indexOf(t), 1);
+  let idx = tasks.indexOf(target);
+  if (!before) idx++;
+  t.col = target.col;
+  tasks.splice(idx, 0, t);
+  saveAll();
+}
+
+function renderBoard() {
+  const board = $('board'); board.innerHTML = '';
+  cols.forEach(col => {
+    const cEl = document.createElement('div'); cEl.className = 'col';
+    cEl.dataset.cid = col.id;
+    const head = document.createElement('div'); head.className = 'colhead';
+    const name = document.createElement('span'); name.className = 'colname'; name.textContent = col.name;
+    name.title = 'Click to rename'; name.onclick = () => {
+      const v = prompt('Rename list:', col.name);
+      if (v && v.trim()) { col.name = v.trim(); saveAll(); }
+    };
+    const inCol = tasks.filter(t => t.col === col.id);
+    const count = document.createElement('span'); count.className = 'colcount'; count.textContent = inCol.length;
+    const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕'; del.title = 'Delete list';
+    del.onclick = () => {
+      if (cols.length === 1) { alert('Keep at least one list.'); return; }
+      const destCol = cols[0].id === col.id ? cols[1] : cols[0];
+      if (!confirm(`Delete list "${col.name}"? Its tasks move to "${destCol.name}".`)) return;
+      tasks.forEach(t => { if (t.col === col.id) t.col = destCol.id; });
+      cols.splice(cols.indexOf(col), 1);
+      saveAll();
+    };
+    head.append(name, count, del);
+
+    const ul = document.createElement('ul'); ul.className = 'colbody';
+    inCol.forEach(t => ul.appendChild(taskLi(t)));
+
+    cEl.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (isFileDrag(e) || draggedId) cEl.classList.add('dragover-col');
+    });
+    cEl.addEventListener('dragleave', e => { if (!cEl.contains(e.relatedTarget)) cEl.classList.remove('dragover-col'); });
+    cEl.addEventListener('drop', e => {
+      e.preventDefault(); cEl.classList.remove('dragover-col');
+      if (isFileDrag(e)) {
+        const files = Array.from(e.dataTransfer.files); if (!files.length) return;
+        const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: col.id };
+        tasks.push(t); attachFiles(t, e.dataTransfer.files);
+        return;
+      }
+      if (!draggedId) return;
+      const t = tasks.find(x => x.id === draggedId); if (!t) return;
+      tasks.splice(tasks.indexOf(t), 1); t.col = col.id; tasks.push(t);
+      saveAll();
+    });
+
+    cEl.append(head, ul);
+    board.appendChild(cEl);
+  });
+
+  const addCol = document.createElement('button'); addCol.className = 'addcol'; addCol.textContent = '+ Add list';
+  addCol.onclick = () => {
+    const v = prompt('New list name:');
+    if (v && v.trim()) { cols.push({ id: uid(), name: v.trim() }); saveAll(); }
+  };
+  board.appendChild(addCol);
+
+  const open = tasks.filter(t => !t.done).length, done = tasks.length - open;
+  $('tstat').textContent = tasks.length ? `${open} open · ${done} done` : 'Nothing here yet — add your first task above.';
+}
+
+function clearCompleted() {
+  const n = tasks.filter(t => t.done).length;
+  if (!n) { alert('No completed tasks to clear.'); return; }
+  if (!confirm(`Delete ${n} completed task${n > 1 ? 's' : ''}? This cannot be undone.`)) return;
+  tasks = tasks.filter(t => !t.done);
+  saveAll();
+}
+
+function fmtSize(b) { return b > 1048576 ? (b/1048576).toFixed(1)+' MB' : b > 1024 ? Math.round(b/1024)+' KB' : b+' B'; }
+
+function attachFiles(task, fileList) {
+  const files = Array.from(fileList || []); if (!files.length) return;
+  let pending = files.length;
+  files.forEach(f => {
+    if (f.size <= MAX_FILE) {
+      const r = new FileReader();
+      r.onload = () => { task.files.push({ name:f.name, size:f.size, type:f.type, data:r.result }); if (--pending === 0) saveAll(); };
+      r.onerror = () => { task.files.push({ name:f.name, size:f.size, type:f.type }); if (--pending === 0) saveAll(); };
+      r.readAsDataURL(f);
+    } else {
+      task.files.push({ name:f.name, size:f.size, type:f.type });
+      if (--pending === 0) saveAll();
+    }
+  });
+}
+
+const dz = $('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  if (!isFileDrag(e)) return;
+  const files = Array.from(e.dataTransfer.files); if (!files.length) return;
+  const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: cols[0].id };
+  tasks.unshift(t); attachFiles(t, e.dataTransfer.files);
+});
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+/* ---- touch drag & drop (mobile: long-press a card, then drag) ---- */
+let tDrag = null;
+function touchDragInit(li, t) {
+  li.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;
+    const sx = e.clientX, sy = e.clientY;
+    let started = false;
+    const timer = setTimeout(() => { started = true; cleanup(); startTouchDrag(li, t, sx, sy); }, 300);
+    const move = ev => {
+      if (!started && (Math.abs(ev.clientX - sx) > 12 || Math.abs(ev.clientY - sy) > 12)) { clearTimeout(timer); cleanup(); }
+    };
+    const up = () => { clearTimeout(timer); cleanup(); };
+    const cleanup = () => {
+      li.removeEventListener('pointermove', move);
+      li.removeEventListener('pointerup', up);
+      li.removeEventListener('pointercancel', up);
+    };
+    li.addEventListener('pointermove', move);
+    li.addEventListener('pointerup', up);
+    li.addEventListener('pointercancel', up);
+  });
+}
+function startTouchDrag(li, t, x, y) {
+  if (navigator.vibrate) navigator.vibrate(15);
+  const r = li.getBoundingClientRect();
+  const ghost = li.cloneNode(true);
+  Object.assign(ghost.style, {
+    position:'fixed', left:r.left+'px', top:r.top+'px', width:r.width+'px', margin:0,
+    zIndex:80, pointerEvents:'none', opacity:.92, transform:'scale(1.04) rotate(1.5deg)',
+    boxShadow:'0 16px 40px rgba(0,0,0,.25)', listStyle:'none'
+  });
+  document.body.appendChild(ghost);
+  li.classList.add('dragging');
+  tDrag = { t, ghost, offX: x - r.left, offY: y - r.top, target:null, before:false, colEl:null };
+  const mv = ev => {
+    if (ev.cancelable) ev.preventDefault();  // stop page scroll while dragging
+    const p = ev.touches ? ev.touches[0] : ev;
+    ghost.style.left = (p.clientX - tDrag.offX) + 'px';
+    ghost.style.top = (p.clientY - tDrag.offY) + 'px';
+    ghost.style.display = 'none';
+    const el = document.elementFromPoint(p.clientX, p.clientY);
+    ghost.style.display = '';
+    clearMarks();
+    tDrag.target = null; tDrag.colEl = null;
+    const card = el && el.closest ? el.closest('.taskcard') : null;
+    if (card && card !== li && !card.classList.contains('dragging')) {
+      const cr = card.getBoundingClientRect();
+      tDrag.before = (p.clientY - cr.top) < cr.height / 2;
+      card.classList.add(tDrag.before ? 'insert-above' : 'insert-below');
+      tDrag.target = card;
+    } else {
+      const colEl = el && el.closest ? el.closest('.col') : null;
+      if (colEl) { colEl.classList.add('dragover-col'); tDrag.colEl = colEl; }
+    }
+    // auto-scroll the board when dragging near its edges
+    const board = $('board'), br = board.getBoundingClientRect();
+    if (p.clientX > br.right - 44) board.scrollLeft += 14;
+    else if (p.clientX < br.left + 44) board.scrollLeft -= 14;
+  };
+  const end = () => {
+    document.removeEventListener('touchmove', mv);
+    document.removeEventListener('pointermove', mv);
+    document.removeEventListener('pointerup', end);
+    document.removeEventListener('pointercancel', end);
+    document.removeEventListener('touchend', end);
+    ghost.remove(); li.classList.remove('dragging'); clearMarks();
+    if (!tDrag) return;
+    if (tDrag.target) {
+      const targetTask = tasks.find(x => x.id === tDrag.target.dataset.tid);
+      if (targetTask) moveTask(t.id, targetTask, tDrag.before);
+    } else if (tDrag.colEl) {
+      const colId = tDrag.colEl.dataset.cid;
+      const tt = tasks.find(x => x.id === t.id);
+      if (tt && colId && cols.some(c => c.id === colId)) {
+        tasks.splice(tasks.indexOf(tt), 1); tt.col = colId; tasks.push(tt); saveAll();
+      }
+    }
+    tDrag = null;
+  };
+  document.addEventListener('touchmove', mv, { passive:false });
+  document.addEventListener('pointermove', mv);
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+  document.addEventListener('touchend', end);
+}
+
+/* duplicate detection */
+const norm = s => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+function similarity(a, b) {
+  const A = new Set(norm(a).split(' ')), B = new Set(norm(b).split(' '));
+  if (!A.size || !B.size) return 0;
+  let inter = 0; A.forEach(w => { if (B.has(w)) inter++; });
+  return inter / Math.min(A.size, B.size);
+}
+function findDup(text) {
+  const nt = norm(text);
+  return tasks.find(t => {
+    const et = norm(t.text);
+    return et === nt || et.includes(nt) || nt.includes(et) || similarity(text, t.text) >= 0.7;
+  });
+}
+
+let pendingAdd = null;
+function addTask() {
+  const v = $('ti').value.trim(); if (!v) return;
+  const dup = findDup(v);
+  if (dup) {
+    pendingAdd = { text: v, dup };
+    $('dupOld').textContent = dup.text + '  (in ' + (cols.find(c => c.id === dup.col)?.name || '?') + (dup.done ? ', completed' : '') + ')';
+    $('dupNew').textContent = v;
+    $('overlay').classList.add('on');
+    return;
+  }
+  createTask(v);
+}
+function createTask(v) {
+  tasks.unshift({ id: uid(), text: v, done: false, files: [], col: cols[0].id });
+  $('ti').value = '';
+  saveAll();
+}
+function dupChoice(choice) {
+  $('overlay').classList.remove('on');
+  if (!pendingAdd) return;
+  const { text, dup } = pendingAdd; pendingAdd = null;
+  if (choice === 'new') { createTask(text); return; }
+  if (choice === 'merge') {
+    dup.done = false;
+    if (norm(text).length > norm(dup.text).length) dup.text = text;
+    tasks.splice(tasks.indexOf(dup), 1); tasks.unshift(dup);
+    $('ti').value = '';
+    saveAll();
+    toast('Merged into existing task.');
+  }
+}
+$('overlay').addEventListener('click', e => { if (e.target === $('overlay')) dupChoice('cancel'); });
+$('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
+
+/* ============ habits ============ */
+let habits = load('tk_habits', []);
+function last7() {
+  const out = [];
+  for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); out.push(d); }
+  return out;
+}
+function streak(h) {
+  let s = 0; const d = new Date();
+  if (!h.days[todayKey()]) d.setDate(d.getDate() - 1);
+  while (h.days[dkey(new Date(d.getTime() - d.getTimezoneOffset()*60000))]) { s++; d.setDate(d.getDate() - 1); }
+  return s;
+}
+function renderHabits() {
+  const t = $('ht');
+  const days = last7();
+  let html = '<tr><th>Habit</th>' + days.map(d => {
+    const isT = dkey(new Date(d.getTime() - d.getTimezoneOffset()*60000)) === todayKey();
+    return `<th class="${isT ? 'today-col' : ''}">${d.toLocaleDateString(undefined,{weekday:'short'})}</th>`;
+  }).join('') + '<th></th></tr>';
+  habits.forEach((h, hi) => {
+    html += `<tr><td>${h.name}<span class="streak">🔥 ${streak(h)}</span></td>`;
+    days.forEach(d => {
+      const k = dkey(new Date(d.getTime() - d.getTimezoneOffset()*60000));
+      html += `<td><span class="dot ${h.days[k] ? 'hit' : ''}" onclick="tick(${hi},'${k}')"></span></td>`;
+    });
+    html += `<td><button class="x" onclick="delHabit(${hi})">✕</button></td></tr>`;
+  });
+  t.innerHTML = html;
+}
+function tick(hi, k) {
+  habits[hi].days[k] = !habits[hi].days[k];
+  if (!habits[hi].days[k]) delete habits[hi].days[k];
+  else { const s = streak(habits[hi]); if (s > 0 && s % 7 === 0) { celebrate('🔥', s + '-day streak!', '"' + habits[hi].name + '" — a full ' + (s/7) + ' week' + (s>7?'s':'') + ' unbroken. Protect it.'); } }
+  store('tk_habits', habits); renderHabits();
+}
+function delHabit(hi) { habits.splice(hi, 1); store('tk_habits', habits); renderHabits(); }
+function addHabit() {
+  const v = $('hi').value.trim(); if (!v) return;
+  habits.push({ name: v, days: {} }); $('hi').value = '';
+  store('tk_habits', habits); renderHabits();
+}
+$('hi').addEventListener('keydown', e => { if (e.key === 'Enter') addHabit(); });
+
+/* ============ focus timer ============ */
+let durs = load('tk_dur', { focus: 25, break: 5 });
+let mode = 'focus', left = durs.focus * 60, ticking = null;
+const RING_C = 2 * Math.PI * 128;
+
+function durChanged() {
+  const f = Math.max(1, Math.min(180, parseInt($('focusMin').value) || 25));
+  const b = Math.max(1, Math.min(60, parseInt($('breakMin').value) || 5));
+  durs = { focus: f, break: b };
+  $('focusMin').value = f; $('breakMin').value = b;
+  store('tk_dur', durs);
+  if (!ticking) { left = durs[mode] * 60; paint(); }
+}
+function fmt(s) { return String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0'); }
+function paint() {
+  $('clock').textContent = fmt(left);
+  $('mode').textContent = mode === 'focus' ? `Focus · ${durs.focus} min` : `Break · ${durs.break} min`;
+  const total = durs[mode] * 60;
+  $('ring').style.strokeDashoffset = RING_C * (1 - left / total);
+  document.title = ticking ? fmt(left) + (mode === 'focus' ? ' · Focus' : ' · Break') : 'BigPlan';
+  const done = load('tk_pomo_' + todayKey(), 0);
+  $('sessions').textContent = done ? `${done} focus session${done > 1 ? 's' : ''} completed today` : '';
+}
+function toggleTimer() {
+  stopAlarm();
+  if (ticking) { clearInterval(ticking); ticking = null; $('startbtn').textContent = 'Resume'; return; }
+  $('startbtn').textContent = 'Pause';
+  ticking = setInterval(() => {
+    left--;
+    if (left <= 0) {
+      clearInterval(ticking); ticking = null;
+      startAlarm();
+      if (mode === 'focus') {
+        const n = load('tk_pomo_' + todayKey(), 0) + 1;
+        store('tk_pomo_' + todayKey(), n);
+        if (n === 4) setTimeout(() => celebrate('🧠', '4 focus sessions today', 'That’s deep-work territory. Your future self says thanks.'), 400);
+      }
+      mode = mode === 'focus' ? 'break' : 'focus';
+      left = durs[mode] * 60; $('startbtn').textContent = 'Start';
+    }
+    paint();
+  }, 1000);
+  paint();
+}
+function resetTimer() { stopAlarm(); clearInterval(ticking); ticking = null; left = durs[mode] * 60; $('startbtn').textContent = 'Start'; paint(); }
+function switchMode() { stopAlarm(); clearInterval(ticking); ticking = null; mode = mode === 'focus' ? 'break' : 'focus'; left = durs[mode] * 60; $('startbtn').textContent = 'Start'; paint(); }
+
+/* alarm: slow → fast, max at 30 s, auto-stop 90 s */
+let alarmCtx = null, alarmTO = null, alarmStart = 0;
+function startAlarm() {
+  stopAlarm();
+  try { alarmCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
+  alarmStart = Date.now();
+  $('stopalarm').style.display = 'inline-block';
+  alarmBeep();
+}
+function alarmBeep() {
+  if (!alarmCtx) return;
+  const el = (Date.now() - alarmStart) / 1000;
+  if (el > 90) { stopAlarm(); return; }
+  try {
+    const o = alarmCtx.createOscillator(), g = alarmCtx.createGain();
+    o.connect(g); g.connect(alarmCtx.destination);
+    o.type = 'square';
+    o.frequency.value = el >= 30 ? 1100 : 880;
+    g.gain.setValueAtTime(0.5, alarmCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, alarmCtx.currentTime + 0.22);
+    o.start(); o.stop(alarmCtx.currentTime + 0.25);
+  } catch {}
+  const gap = el >= 30 ? 150 : Math.round(1200 - (1050 * el / 30));
+  alarmTO = setTimeout(alarmBeep, gap);
+}
+function stopAlarm() {
+  clearTimeout(alarmTO); alarmTO = null;
+  if (alarmCtx) { try { alarmCtx.close(); } catch {} alarmCtx = null; }
+  $('stopalarm').style.display = 'none';
+}
+
+/* ============ notes ============ */
+let saveT;
+$('notes').addEventListener('input', () => {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    store('tk_notes', $('notes').value);
+    $('saved').textContent = 'Saved ' + new Date().toLocaleTimeString();
+  }, 400);
+});
+
+/* ============ boot (runs after unlock) ============ */
+let booted = false;
+function boot() {
+  if (booted) return; booted = true;
+  renderBoard();
+  renderHabits();
+  $('focusMin').value = durs.focus; $('breakMin').value = durs.break;
+  $('focusMin').addEventListener('change', durChanged);
+  $('breakMin').addEventListener('change', durChanged);
+  $('ring').style.strokeDasharray = RING_C;
+  paint();
+  $('notes').value = load('tk_notes', '');
+  if (localStorage.getItem('tk_dirty') === 'true') syncPush();
+}
+
+/* ============ PWA: offline service worker ============ */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
