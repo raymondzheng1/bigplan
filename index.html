@@ -93,7 +93,7 @@
 
   /* kanban board */
   .board { display:flex; gap:14px; overflow-x:auto; padding:4px 2px 12px; align-items:flex-start; }
-  .col { flex:0 0 236px; background:rgba(120,120,128,.08); border-radius:18px; padding:10px; transition:background .2s; }
+  .col { flex:1 1 260px; min-width:236px; background:rgba(120,120,128,.08); border-radius:18px; padding:10px; transition:background .2s; }
   .col.dragover-col { background:var(--tint); }
   .colhead { display:flex; align-items:center; gap:6px; padding:4px 8px 10px; }
   .colname { font-size:13px; font-weight:600; letter-spacing:-.01em; flex:1; cursor:pointer; }
@@ -256,7 +256,7 @@
     .addrow input, .durs input { font-size:16px; }  /* prevents iOS focus zoom */
     .addrow button { padding:0 20px; min-height:46px; }
     .board { scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
-    .col { flex:0 0 80vw; scroll-snap-align:start; }
+    .col { flex:0 0 80vw; min-width:0; scroll-snap-align:start; }
     .taskcard { padding:13px 14px; }
     .taskcard .t { font-size:15px; }
     .ck { width:23px; height:23px; }
@@ -307,6 +307,7 @@
       <button class="ghost" onclick="$('importfile').click()">Import</button>
       <button class="ghost" onclick="lockNow()">🔒 Lock</button>
       <input type="file" id="importfile" accept=".json,application/json" style="display:none">
+      <input type="file" id="attachfile" multiple style="display:none">
     </div>
   </header>
 
@@ -980,13 +981,16 @@ function taskLi(t) {
   const sp = document.createElement('span'); sp.className = 't'; sp.textContent = t.text;
   const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
   del.onclick = () => { tasks.splice(tasks.indexOf(t), 1); saveAll(); };
+  const att = document.createElement('button'); att.className = 'x up'; att.textContent = '📎';
+  att.title = 'Attach file';
+  att.onclick = () => { attachTarget = t; $('attachfile').click(); };
   if (!t.done) {                        // move-to-top (not useful in the date-grouped Done column)
     const up = document.createElement('button'); up.className = 'x up'; up.textContent = '⤒';
     up.title = 'Move to top';
     up.onclick = () => moveToTop(t);
-    row.append(lab, sp, up, del);
+    row.append(lab, sp, up, att, del);
   } else {
-    row.append(lab, sp, del);
+    row.append(lab, sp, att, del);
   }
   li.appendChild(row);
 
@@ -1249,6 +1253,14 @@ function attachFiles(task, fileList) {
     }
   });
 }
+
+/* attach via file picker (works everywhere — this is THE way on mobile) */
+let attachTarget = null;
+$('attachfile').addEventListener('change', e => {
+  if (attachTarget && e.target.files.length) attachFiles(attachTarget, e.target.files);
+  attachTarget = null;
+  e.target.value = '';
+});
 
 const dz = $('dropzone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
