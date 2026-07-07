@@ -128,6 +128,7 @@
     padding:14px 20px; color:var(--sub); font-size:13px; font-weight:500; cursor:pointer; transition:all .2s; white-space:nowrap; }
   .addcol:hover { border-color:var(--blue); color:var(--blue); background:var(--tint); }
 
+  .tstamp { font-size:10.5px; color:#c7c7cc; margin-top:7px; letter-spacing:0; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .chip { display:inline-flex; align-items:center; gap:5px; background:var(--tint); color:#0066cc;
     border-radius:980px; padding:3px 11px; font-size:11.5px; font-weight:500; cursor:pointer;
@@ -285,7 +286,7 @@
     <div class="hbtns">
       <button class="ghost" onclick="exportData()">Export backup</button>
       <button class="ghost" onclick="$('importfile').click()">Import</button>
-      <button class="ghost" onclick="location.reload()">🔒 Lock</button>
+      <button class="ghost" onclick="lockNow()">🔒 Lock</button>
       <input type="file" id="importfile" accept=".json,application/json" style="display:none">
     </div>
   </header>
@@ -423,7 +424,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const META_KEYS = ['tk_pass', 'tk_dirty', 'tk_updatedAt'];
+const META_KEYS = ['tk_pass', 'tk_dirty', 'tk_updatedAt', 'tk_trust'];
 const store = (k, v) => {
   try { localStorage.setItem(k, JSON.stringify(v)); }
   catch (e) { alert('Storage is full — could not save. Try removing large file attachments or export a backup.'); return; }
@@ -500,8 +501,20 @@ function markDirty() {
   } catch {}
   clearTimeout(pushT); pushT = setTimeout(syncPush, 1800);
 }
-function getPass() { try { return sessionStorage.getItem('tk_sess') || null; } catch { return null; } }
+function getPass() { try { return sessionStorage.getItem('tk_sess') || getTrust(); } catch { return getTrust(); } }
 function setPassSess(v) { try { sessionStorage.setItem('tk_sess', v); } catch {} }
+/* trusted device: remember the passcode (obfuscated) for 30 days so unlock isn't asked every visit */
+const TRUST_DAYS = 30;
+function saveTrust(v) {
+  try { localStorage.setItem('tk_trust', JSON.stringify({ p: btoa(unescape(encodeURIComponent(v))), exp: Date.now() + TRUST_DAYS * 864e5 })); } catch {}
+}
+function getTrust() {
+  try { const t = JSON.parse(localStorage.getItem('tk_trust'));
+    if (t && t.exp > Date.now()) return decodeURIComponent(escape(atob(t.p))); } catch {}
+  return null;
+}
+function clearTrust() { try { localStorage.removeItem('tk_trust'); sessionStorage.removeItem('tk_sess'); } catch {} }
+function lockNow() { clearTrust(); location.reload(); }
 function collectState() {
   const data = {};
   for (let i = 0; i < localStorage.length; i++) {
@@ -603,7 +616,16 @@ setInterval(() => {
    Translator app) and verified against /api/state. A hash is cached locally so you
    can unlock OFFLINE after the first online unlock. Not encryption — a privacy gate. */
 let lockBusy = false;
-function initLock() {
+async function initLock() {
+  const trusted = getTrust();
+  if (trusted) {                        // trusted device: skip the prompt, sync, go straight in
+    setPassSess(trusted);
+    $('lock').style.display = 'none';
+    $('wrap').classList.remove('blurred');
+    await syncPull();                   // freshest cloud copy BEFORE state initializes
+    boot(); checkMilestones();
+    return;
+  }
   $('locksub').textContent = 'Enter your passcode';
   $('lockbtn').textContent = 'Unlock';
   $('forgot').style.display = 'inline-block';
@@ -623,7 +645,7 @@ async function lockSubmit() {
   }
   if (serverStatus === 200) {           // server-verified: cache hash for offline unlocks
     try { localStorage.setItem('tk_pass', JSON.stringify(sha256(v))); } catch {}
-    setPassSess(v);
+    setPassSess(v); saveTrust(v);       // remember this device for 30 days
     await syncPull();                   // adopt the newest cloud copy before showing the app
     unlock(); done(); return;
   }
@@ -631,7 +653,7 @@ async function lockSubmit() {
 
   const cached = load('tk_pass', null); // offline / no server: fall back to cached hash
   if (cached && sha256(v) === cached) {
-    setPassSess(v); unlock();
+    setPassSess(v); saveTrust(v); unlock();
     setSyncUI(serverStatus === 503 ? 'off' : 'offline');
     done(); return;
   }
@@ -639,7 +661,7 @@ async function lockSubmit() {
     if (serverStatus === 503 &&        // no sync server: allow local-only mode
         confirm('No sync server is configured. Use this passcode for THIS DEVICE only (local mode, no cloud sync)?')) {
       try { localStorage.setItem('tk_pass', JSON.stringify(sha256(v))); } catch {}
-      unlock(); setSyncUI('off'); done(); return;
+      saveTrust(v); unlock(); setSyncUI('off'); done(); return;
     }
     fail(navigator.onLine
       ? 'Could not verify. Check the sync server is set up (APP_PASSCODE in Vercel).'
@@ -823,17 +845,29 @@ $('importfile').addEventListener('change', e => {
 
 /* ============ kanban tasks ============ */
 const MAX_FILE = 1.5 * 1024 * 1024;
-let cols = load('tk_cols', null) || [
-  { id: 'c-todo', name: 'To Do' },
-  { id: 'c-doing', name: 'In Progress' },
-  { id: 'c-done', name: 'Done' }
-];
-let tasks = load('tk_tasks', []);
-tasks.forEach(t => {
-  if (!t.files) t.files = [];
-  if (!t.id) t.id = uid();
-  if (!t.col || !cols.some(c => c.id === t.col)) t.col = t.done ? (cols[cols.length-1] || cols[0]).id : cols[0].id;
-});
+/* IMPORTANT: state initializes in initState() — called from boot() AFTER the cloud
+   pull — never at script parse time. Initializing early caused stale in-memory data
+   to overwrite freshly-pulled cloud data on the first edit (the cross-device sync bug). */
+let cols = [], tasks = [];
+function initState() {
+  cols = load('tk_cols', null) || [
+    { id: 'c-todo', name: 'To Do' },
+    { id: 'c-doing', name: 'In Progress' },
+    { id: 'c-done', name: 'Done' }
+  ];
+  tasks = load('tk_tasks', []);
+  const migBase = Date.now();
+  tasks.forEach((t, i) => {
+    if (!t.files) t.files = [];
+    if (!t.id) t.id = uid();
+    if (!t.createdAt) t.createdAt = migBase + i;   // preserve existing relative order
+    if (!t.col || !cols.some(c => c.id === t.col)) t.col = t.done ? (cols[cols.length-1] || cols[0]).id : cols[0].id;
+  });
+  tasks.sort((a, b) => a.createdAt - b.createdAt); // default: oldest first (drag still overrides)
+  habits = load('tk_habits', []);
+  durs = load('tk_dur', { focus: 25, break: 5 });
+  left = durs[mode] * 60;
+}
 
 function saveAll() { store('tk_tasks', tasks); store('tk_cols', cols); renderBoard(); }
 
@@ -849,7 +883,20 @@ function taskLi(t) {
 
   const lab = document.createElement('label'); lab.className = 'ck';
   const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = t.done;
-  cb.onchange = () => { t.done = cb.checked; if (cb.checked) bumpDone(); setTimeout(saveAll, 220); };
+  cb.onchange = () => {
+    t.done = cb.checked;
+    if (cb.checked) {                       // completing → stamp it and move to the Done list
+      t.doneAt = Date.now();
+      const doneCol = cols.find(c => c.id === 'c-done' || /^(done|complete[d]?|完成)$/i.test(c.name.trim())) || cols[cols.length - 1];
+      if (doneCol && t.col !== doneCol.id) { t.prevCol = t.col; t.col = doneCol.id; }
+      bumpDone();
+    } else {                                // un-completing → back to where it came from
+      delete t.doneAt;
+      if (t.prevCol && cols.some(c => c.id === t.prevCol)) t.col = t.prevCol;
+      delete t.prevCol;
+    }
+    setTimeout(saveAll, 220);
+  };
   const box = document.createElement('span'); box.className = 'box';
   lab.append(cb, box);
 
@@ -875,6 +922,10 @@ function taskLi(t) {
     });
     li.appendChild(chips);
   }
+
+  const ts = document.createElement('div'); ts.className = 'tstamp';
+  ts.textContent = 'Added ' + fmtDate(t.createdAt) + (t.done && t.doneAt ? '  ·  ✓ Done ' + fmtDate(t.doneAt) : '');
+  li.appendChild(ts);
 
   li.addEventListener('dragstart', e => {
     draggedId = t.id;
@@ -954,7 +1005,7 @@ function renderBoard() {
       e.preventDefault(); cEl.classList.remove('dragover-col');
       if (isFileDrag(e)) {
         const files = Array.from(e.dataTransfer.files); if (!files.length) return;
-        const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: col.id };
+        const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: col.id, createdAt: Date.now() };
         tasks.push(t); attachFiles(t, e.dataTransfer.files);
         return;
       }
@@ -988,6 +1039,7 @@ function clearCompleted() {
 }
 
 function fmtSize(b) { return b > 1048576 ? (b/1048576).toFixed(1)+' MB' : b > 1024 ? Math.round(b/1024)+' KB' : b+' B'; }
+const fmtDate = ms => ms ? new Date(ms).toLocaleDateString(undefined, { day:'numeric', month:'short' }) : '—';
 
 function attachFiles(task, fileList) {
   const files = Array.from(fileList || []); if (!files.length) return;
@@ -1012,8 +1064,8 @@ dz.addEventListener('drop', e => {
   e.preventDefault(); dz.classList.remove('dragover');
   if (!isFileDrag(e)) return;
   const files = Array.from(e.dataTransfer.files); if (!files.length) return;
-  const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: cols[0].id };
-  tasks.unshift(t); attachFiles(t, e.dataTransfer.files);
+  const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: cols[0].id, createdAt: Date.now() };
+  tasks.push(t); attachFiles(t, e.dataTransfer.files);
 });
 window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => e.preventDefault());
@@ -1134,7 +1186,7 @@ function addTask() {
   createTask(v);
 }
 function createTask(v) {
-  tasks.unshift({ id: uid(), text: v, done: false, files: [], col: cols[0].id });
+  tasks.push({ id: uid(), text: v, done: false, files: [], col: cols[0].id, createdAt: Date.now() });
   $('ti').value = '';
   saveAll();
 }
@@ -1144,9 +1196,13 @@ function dupChoice(choice) {
   const { text, dup } = pendingAdd; pendingAdd = null;
   if (choice === 'new') { createTask(text); return; }
   if (choice === 'merge') {
-    dup.done = false;
+    if (dup.done) {                       // revive: bring it back from Done
+      dup.done = false; delete dup.doneAt;
+      if (dup.prevCol && cols.some(c => c.id === dup.prevCol)) dup.col = dup.prevCol;
+      else dup.col = cols[0].id;
+      delete dup.prevCol;
+    }
     if (norm(text).length > norm(dup.text).length) dup.text = text;
-    tasks.splice(tasks.indexOf(dup), 1); tasks.unshift(dup);
     $('ti').value = '';
     saveAll();
     toast('Merged into existing task.');
@@ -1156,7 +1212,7 @@ $('overlay').addEventListener('click', e => { if (e.target === $('overlay')) dup
 $('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
 
 /* ============ habits ============ */
-let habits = load('tk_habits', []);
+let habits = []; // loaded in initState()
 function last7() {
   const out = [];
   for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); out.push(d); }
@@ -1200,8 +1256,8 @@ function addHabit() {
 $('hi').addEventListener('keydown', e => { if (e.key === 'Enter') addHabit(); });
 
 /* ============ focus timer ============ */
-let durs = load('tk_dur', { focus: 25, break: 5 });
-let mode = 'focus', left = durs.focus * 60, ticking = null;
+let durs = { focus: 25, break: 5 };   // loaded in initState()
+let mode = 'focus', left = 25 * 60, ticking = null;
 const RING_C = 2 * Math.PI * 128;
 
 function durChanged() {
@@ -1291,6 +1347,7 @@ $('notes').addEventListener('input', () => {
 let booted = false;
 function boot() {
   if (booted) return; booted = true;
+  initState();          // read state from localStorage only AFTER the cloud pull
   renderBoard();
   renderHabits();
   $('focusMin').value = durs.focus; $('breakMin').value = durs.break;
