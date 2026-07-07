@@ -131,6 +131,11 @@
   .tstamp { font-size:10.5px; color:#c7c7cc; margin-top:7px; letter-spacing:0; }
   .dategroup { font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
     color:var(--sub); padding:8px 4px 2px; list-style:none; }
+  #repPeriod { border:none; background:rgba(120,120,128,.12); border-radius:10px; padding:8px 12px;
+    font-size:13.5px; margin:8px 0 12px; color:var(--ink); }
+  #repText { background:rgba(120,120,128,.08); border-radius:12px; padding:14px 16px;
+    font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap;
+    max-height:46vh; overflow:auto; color:var(--ink); }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .chip { display:inline-flex; align-items:center; gap:5px; background:var(--tint); color:#0066cc;
     border-radius:980px; padding:3px 11px; font-size:11.5px; font-weight:500; cursor:pointer;
@@ -317,7 +322,10 @@
     <div id="dropzone">Drop files here to create a task — or drop onto a card to attach</div>
     <div class="taskfoot">
       <span class="hint" id="tstat"></span>
-      <button class="clearbtn" onclick="clearCompleted()">Clear Completed</button>
+      <span>
+        <button class="clearbtn" onclick="openReport()">Report</button>
+        <button class="clearbtn" onclick="clearCompleted()">Clear Completed</button>
+      </span>
     </div>
   </div>
 
@@ -421,6 +429,25 @@
     <h3 id="celebTitle"></h3>
     <p id="celebMsg"></p>
     <button class="celeb-btn" onclick="$('celebrate').classList.remove('on')">Keep going</button>
+  </div>
+</div>
+
+<!-- progress report dialog -->
+<div id="report" class="overlay">
+  <div class="dialog" style="width:min(580px, calc(100vw - 40px))">
+    <h3>Progress Report</h3>
+    <select id="repPeriod">
+      <option value="7">Last 7 days</option>
+      <option value="14">Last 14 days</option>
+      <option value="30">Last 30 days</option>
+      <option value="all">Entire mission</option>
+    </select>
+    <pre id="repText"></pre>
+    <div class="dlgrow">
+      <button class="dlg-merge" onclick="copyReport()">Copy</button>
+      <button class="dlg-new" onclick="downloadReport()">Download .txt</button>
+      <button class="dlg-cancel" onclick="$('report').classList.remove('on')">Close</button>
+    </div>
   </div>
 </div>
 
@@ -1086,13 +1113,86 @@ function renderBoard() {
 function clearCompleted() {
   const n = tasks.filter(t => t.done).length;
   if (!n) { alert('No completed tasks to clear.'); return; }
-  if (!confirm(`Delete ${n} completed task${n > 1 ? 's' : ''}? This cannot be undone.`)) return;
+  if (!confirm(`Delete ${n} completed task${n > 1 ? 's' : ''}? This cannot be undone — they'll also disappear from progress reports.`)) return;
   tasks = tasks.filter(t => !t.done);
   saveAll();
 }
 
 function fmtSize(b) { return b > 1048576 ? (b/1048576).toFixed(1)+' MB' : b > 1024 ? Math.round(b/1024)+' KB' : b+' B'; }
 const fmtDate = ms => ms ? new Date(ms).toLocaleDateString(undefined, { day:'numeric', month:'short' }) : '—';
+const fmtLong = ms => new Date(ms).toLocaleDateString(undefined, { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+/* ---- progress report ---- */
+function openReport() { $('report').classList.add('on'); renderReport(); }
+function renderReport() { $('repText').textContent = buildReport(); }
+function buildReport() {
+  const sel = $('repPeriod').value;
+  const days = sel === 'all' ? null : parseInt(sel);
+  const now = new Date();
+  const cutoff = days ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1).getTime() : 0;
+  const done = tasks.filter(t => t.done && (t.doneAt || 0) >= cutoff).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  const open = tasks.filter(t => !t.done);
+  let focus = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('tk_pomo_')) {
+      const dms = new Date(k.slice(8) + 'T12:00').getTime();
+      if (!cutoff || dms >= cutoff) focus += load(k, 0);
+    }
+  }
+  const daysWorked = new Set(done.map(t => new Date(t.doneAt).toDateString())).size;
+  const L = [];
+  L.push('BIGPLAN — PROGRESS REPORT');
+  L.push('One-Year Mission · Day ' + missionDayN + ' of 365');
+  L.push('Period:    ' + (days ? fmtLong(cutoff) + ' — ' + fmtLong(now) : 'Entire mission (from 1 July 2026)'));
+  L.push('Generated: ' + now.toLocaleString(undefined, { weekday:'long', day:'numeric', month:'long', year:'numeric', hour:'numeric', minute:'2-digit' }));
+  L.push('');
+  L.push('═══ SUMMARY ═══');
+  L.push('Tasks completed:  ' + done.length + (daysWorked ? '  (across ' + daysWorked + ' active day' + (daysWorked > 1 ? 's' : '') + ')' : ''));
+  L.push('Focus sessions:   ' + focus);
+  L.push('Open items:       ' + open.length);
+  L.push('');
+  L.push('═══ COMPLETED ═══');
+  if (!done.length) L.push('(none in this period)');
+  let lastKey = null;
+  done.forEach(t => {
+    const key = new Date(t.doneAt).toDateString();
+    if (key !== lastKey) {
+      lastKey = key;
+      const n = done.filter(x => new Date(x.doneAt).toDateString() === key).length;
+      L.push('');
+      L.push(fmtLong(t.doneAt) + '  (' + n + ')');
+    }
+    L.push('  ✓ ' + t.text);
+  });
+  L.push('');
+  L.push('═══ OPEN ITEMS ═══');
+  if (!open.length) L.push('(all clear)');
+  open.forEach(t => {
+    const cn = (cols.find(c => c.id === t.col) || {}).name || '';
+    L.push('  • ' + t.text + '   [' + cn + ' · added ' + fmtDate(t.createdAt) + ']');
+  });
+  return L.join('\n');
+}
+function copyReport() {
+  const txt = $('repText').textContent;
+  const fallback = () => {
+    const ta = document.createElement('textarea'); ta.value = txt;
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('Report copied'); }
+    catch { alert('Copy failed — select the text manually.'); }
+    ta.remove();
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => toast('Report copied'), fallback);
+  else fallback();
+}
+function downloadReport() {
+  const blob = new Blob([$('repText').textContent], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bigplan-report-' + todayKey() + '.txt';
+  a.click(); URL.revokeObjectURL(a.href);
+}
 
 function attachFiles(task, fileList) {
   const files = Array.from(fileList || []); if (!files.length) return;
@@ -1262,6 +1362,8 @@ function dupChoice(choice) {
   }
 }
 $('overlay').addEventListener('click', e => { if (e.target === $('overlay')) dupChoice('cancel'); });
+$('report').addEventListener('click', e => { if (e.target === $('report')) $('report').classList.remove('on'); });
+$('repPeriod').addEventListener('change', renderReport);
 $('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
 
 /* ============ habits ============ */
