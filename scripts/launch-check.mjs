@@ -64,6 +64,8 @@ check(apiSrc.includes('sendAlert'), 'state.js alerts on auth failure + KV failur
 check(read('api/export.js').includes('sendAlert'), 'export.js alerts on auth failure');
 check(read('api/alert.js').includes('timingSafeEqual'), 'client error endpoint is passcode-gated');
 check(html.includes('reportError'), 'client reports JS/sync/404 errors');
+check(html.includes('/_vercel/insights/script.js'), 'Vercel Web Analytics script mounted (§8.5)');
+check(sw.includes('/_vercel/'), 'service worker never caches analytics');
 
 if (failures) { console.error(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll launch checks passed.');

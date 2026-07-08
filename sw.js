@@ -1,6 +1,6 @@
 /* BigPlan service worker — offline-first (stale-while-revalidate).
    Bump CACHE version on every release so clients pick up the new build. */
-const CACHE = 'bigplan-v16';
+const CACHE = 'bigplan-v17';
 const ASSETS = [
   './',
   './index.html',
@@ -26,7 +26,8 @@ self.addEventListener('activate', e => {
    refresh the cache in the background when online. */
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) return;
-  if (new URL(e.request.url).pathname.includes('/api/')) return; // sync API is network-only, never cached
+  const path = new URL(e.request.url).pathname;
+  if (path.includes('/api/') || path.startsWith('/_vercel/')) return; // API + analytics are network-only, never cached
   e.respondWith(
     caches.open(CACHE).then(cache =>
       cache.match(e.request, { ignoreSearch: true }).then(cached => {

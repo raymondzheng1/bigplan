@@ -3,7 +3,7 @@
 **Tier B — KV-only** (harness §2.0). Static single-file PWA + one serverless function; Upstash Redis KV holds a single-user state blob. No Supabase, no Stripe, no Resend, no accounts.
 
 ## Deviations from harness defaults (recorded per §2.0/§2.1)
-- **No GA4.** Single-user personal tool. (§8.2 waived.)
+- **No GA4.** Single-user personal tool. (§8.2 waived.) **Vercel Web Analytics IS enabled** (§8.5): plain-HTML script tag in `index.html`; `/_vercel/` excluded from SW cache; requires Analytics enabled in the Vercel dashboard.
 - **No contact page.** The only user is the owner. (§16.3 waived.)
 - **Auth = shared passcode** (`APP_PASSCODE` server env, checked per request via `x-app-pass`, constant-time) — the validated Translator pattern, not real auth. Fine for a single-user app; never reuse for multi-user.
 
