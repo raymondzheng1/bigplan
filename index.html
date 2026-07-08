@@ -1458,9 +1458,10 @@ let rec = null, recActive = false;
 function toggleVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { alert('Voice input is not supported in this browser. Try Chrome, Edge, or Safari.'); return; }
+  if (micLongPressed) { micLongPressed = false; return; }   // that tap was a language switch
   if (recActive) { try { rec.stop(); } catch {} return; }
   rec = new SR();
-  rec.lang = navigator.language || 'en-US';
+  rec.lang = load('tk_voicelang', navigator.language || 'en-US');
   rec.interimResults = true;
   rec.continuous = false;
   const base = $('ti').value.trim();
@@ -1479,6 +1480,26 @@ function toggleVoice() {
   };
   try { rec.start(); } catch { stopUI(); }
 }
+/* long-press the mic to switch voice language: English ↔ 中文（普通话） */
+let micHoldT = null, micLongPressed = false;
+function updateMicLabel() {
+  $('micbtn').textContent = /^zh/i.test(load('tk_voicelang', navigator.language || 'en-US')) ? '🎤中' : '🎤';
+}
+$('micbtn').addEventListener('pointerdown', () => {
+  micLongPressed = false;
+  micHoldT = setTimeout(() => {
+    micLongPressed = true;
+    const cur = load('tk_voicelang', navigator.language || 'en-US');
+    const next = /^zh/i.test(cur) ? 'en-US' : 'zh-CN';
+    store('tk_voicelang', next);
+    updateMicLabel();
+    toast(/^zh/i.test(next) ? '语音输入：中文（普通话）' : 'Voice input: English');
+    if (navigator.vibrate) navigator.vibrate(10);
+  }, 600);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+  $('micbtn').addEventListener(ev, () => clearTimeout(micHoldT)));
+updateMicLabel();
 $('newtaskfile').addEventListener('change', e => {
   const files = Array.from(e.target.files || []); if (!files.length) return;
   const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''),
