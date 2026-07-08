@@ -60,6 +60,8 @@ check(html.includes('bigplan-cloud-backup'), 'Import restores cloud-backup files
 console.log('operator alerts (harness §16.4)');
 check(existsSync(resolve(ROOT, 'api/_alert.js')), 'api/_alert.js helper exists');
 check(read('api/_alert.js').includes('alertmute'), 'alerts are throttled (1 per type per 10 min)');
+check(read('api/_alert.js').includes("'SET'"), 'mute uses Upstash command-array form (query-param ?EX&NX 400s — regression guard)');
+check(read('api/_alert.js').includes('ALERT_MUTE_CHECK_FAILED'), 'mute check fails OPEN on infra error');
 check(apiSrc.includes('sendAlert'), 'state.js alerts on auth failure + KV failure');
 check(read('api/export.js').includes('sendAlert'), 'export.js alerts on auth failure');
 check(read('api/alert.js').includes('timingSafeEqual'), 'client error endpoint is passcode-gated');

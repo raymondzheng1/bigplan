@@ -8,9 +8,17 @@ async function allowed(type) {
   const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!base || !token) return true;
   try {
-    const r = await fetch(`${base}/set/${encodeURIComponent('bigplan:alertmute:' + type)}/1?EX=600&NX=true`,
-      { headers: { Authorization: 'Bearer ' + token } }).then(x => x.json());
-    return r.result === 'OK';           // null => muted (already sent within 10 min)
+    // Command-array form (unambiguous Upstash REST syntax): SET key 1 EX 600 NX
+    const r = await fetch(base, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+      body: JSON.stringify(['SET', 'bigplan:alertmute:' + type, '1', 'EX', '600', 'NX'])
+    }).then(x => x.json());
+    if (r && r.error) {                 // infra error => FAIL OPEN: better to over-alert than never alert
+      console.error('ALERT_MUTE_CHECK_FAILED', String(r.error).slice(0, 200));
+      return true;
+    }
+    return r.result === 'OK';           // null => genuinely muted (sent within last 10 min)
   } catch { return true; }
 }
 
