@@ -2,6 +2,7 @@
 // Returns current state + previous version + all daily snapshots as one
 // downloadable JSON. Auth identical to api/state.js (x-app-pass, constant-time).
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { sendAlert } from './_alert.js';
 
 export default async function handler(req, res) {
   const base = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -13,6 +14,10 @@ export default async function handler(req, res) {
   const h = s => createHash('sha256').update(s).digest();
   if (!timingSafeEqual(h(given), h(pass))) {
     await new Promise(r => setTimeout(r, 400));
+    await sendAlert('Wrong passcode attempt',
+      'Endpoint: /api/export\nTime: ' + new Date().toISOString() +
+      '\nIP: ' + (req.headers['x-forwarded-for'] || '?') +
+      '\nUA: ' + (req.headers['user-agent'] || '?'), 'auth');
     res.status(401).json({ error: 'unauthorized' });
     return;
   }

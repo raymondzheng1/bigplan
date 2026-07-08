@@ -24,6 +24,8 @@ Raymond's one-year mission command center (Jul 1, 2026 → Jun 30, 2027). Kanban
 5. **Redeploy** (Deployments → ⋯ → Redeploy) so the env vars take effect.
 6. Open `https://<project>.vercel.app`, enter the passcode. Install to your phone's home screen (Share → Add to Home Screen / menu → Install app).
 
+**Optional — error alert emails (Resend):** sign up at resend.com (free) → create an API key → in Vercel add env var `RESEND_API_KEY` → redeploy. You'll then get an email on wrong passcode attempts, server/KV failures, and app errors (throttled to avoid floods). The default sender `onboarding@resend.dev` delivers only to your own Resend account email — use the same address you sign up with, or verify a domain in Resend and set `ALERT_FROM`.
+
 Changing the passcode later: edit `APP_PASSCODE` in Vercel → redeploy. (Devices that cached the old passcode for offline unlock will re-verify next time they're online.)
 
 ## Backups (simple, layered)

@@ -7,6 +7,7 @@
 // Concurrency: whole-blob last-write-wins on client updatedAt; a stale PUT gets
 // 409 + the newer state. Previous blob kept at bigplan:prev (cheap backup).
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { sendAlert } from './_alert.js';
 
 const KEY = 'bigplan:state';
 const PREV = 'bigplan:prev';
@@ -25,6 +26,10 @@ export default async function handler(req, res) {
   const h = s => createHash('sha256').update(s).digest();
   if (!timingSafeEqual(h(given), h(pass))) {
     await new Promise(r => setTimeout(r, 400)); // slow brute force
+    await sendAlert('Wrong passcode attempt',
+      'Endpoint: /api/state\nTime: ' + new Date().toISOString() +
+      '\nIP: ' + (req.headers['x-forwarded-for'] || '?') +
+      '\nUA: ' + (req.headers['user-agent'] || '?'), 'auth');
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
@@ -61,7 +66,11 @@ export default async function handler(req, res) {
     }
     if (cur.result) await kv('/set/' + encodeURIComponent(PREV), { method: 'POST', body: cur.result });
     const setr = await kv('/set/' + encodeURIComponent(KEY), { method: 'POST', body: payload });
-    if (setr && setr.error) { res.status(500).json({ error: 'kv write failed' }); return; }
+    if (setr && setr.error) {
+      await sendAlert('KV write FAILED', 'Upstash returned: ' + JSON.stringify(setr) + '\nTime: ' + new Date().toISOString(), 'kv');
+      res.status(500).json({ error: 'kv write failed' });
+      return;
+    }
     // Daily rolling snapshot (harness §2.3): first save of each day is snapshotted,
     // keep the last 14 days. Wrapped in try/catch — a snapshot hiccup never fails the save.
     try {

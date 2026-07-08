@@ -636,6 +636,23 @@ function setSyncUI(state) {
   const [c, t] = m[state] || m.off;
   el.style.background = c; $('synclabel').textContent = t;
 }
+/* client error reporting → /api/alert → email (max 1/min from this device) */
+let lastReport = 0;
+function reportError(type, message) {
+  try {
+    if (!getPass() || !navigator.onLine) return;
+    if (Date.now() - lastReport < 60000) return;
+    lastReport = Date.now();
+    fetch('./api/alert', {
+      method: 'POST',
+      headers: { 'x-app-pass': getPass(), 'content-type': 'application/json' },
+      body: JSON.stringify({ type, message: String(message).slice(0, 1500) })
+    }).catch(() => {});
+  } catch {}
+}
+addEventListener('error', e => reportError('js', (e.message || 'error') + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?')));
+addEventListener('unhandledrejection', e => reportError('promise', String((e.reason && e.reason.stack) || e.reason || 'unhandled rejection')));
+
 async function api(method, body, pass) {
   return fetch('./api/state', {
     method,
@@ -669,7 +686,12 @@ async function syncPull() {
   if (!getPass() || !navigator.onLine) return false;
   try {
     const r = await api('GET');
-    if (!r.ok) { setSyncUI(r.status === 503 ? 'off' : 'error'); return false; }
+    if (!r.ok) {
+      if (r.status === 404) reportError('http-404', '/api/state returned 404 — API route missing from deployment');
+      else if (r.status >= 500) reportError('http-' + r.status, '/api/state returned ' + r.status);
+      setSyncUI(r.status === 503 ? 'off' : 'error');
+      return false;
+    }
     const j = await r.json();
     const remote = j && j.state;
     const localAt = load('tk_updatedAt', 0);

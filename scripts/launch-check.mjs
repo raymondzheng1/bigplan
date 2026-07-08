@@ -57,5 +57,13 @@ check(apiSrc.includes('bigplan:snap:'), 'daily rolling KV snapshots on save (kee
 check(html.includes('cloudBackup'), 'client Cloud backup button wired');
 check(html.includes('bigplan-cloud-backup'), 'Import restores cloud-backup files');
 
+console.log('operator alerts (harness §16.4)');
+check(existsSync(resolve(ROOT, 'api/_alert.js')), 'api/_alert.js helper exists');
+check(read('api/_alert.js').includes('alertmute'), 'alerts are throttled (1 per type per 10 min)');
+check(apiSrc.includes('sendAlert'), 'state.js alerts on auth failure + KV failure');
+check(read('api/export.js').includes('sendAlert'), 'export.js alerts on auth failure');
+check(read('api/alert.js').includes('timingSafeEqual'), 'client error endpoint is passcode-gated');
+check(html.includes('reportError'), 'client reports JS/sync/404 errors');
+
 if (failures) { console.error(`\n${failures} check(s) FAILED.`); process.exit(1); }
 console.log('\nAll launch checks passed.');
