@@ -16,7 +16,7 @@ async function allowed(type) {
 
 export async function sendAlert(subject, text, type = 'general') {
   const key = process.env.RESEND_API_KEY;
-  if (!key) return;                     // alerts not configured — never break the caller
+  if (!key) { console.error('ALERT_SKIPPED_NO_KEY — RESEND_API_KEY not set in this deployment'); return; }
   try {
     if (!(await allowed(type))) return;
     const to = process.env.ALERT_EMAIL || 'raymond.zheng@gmail.com';
