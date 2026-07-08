@@ -21,10 +21,14 @@ export async function sendAlert(subject, text, type = 'general') {
     if (!(await allowed(type))) return;
     const to = process.env.ALERT_EMAIL || 'raymond.zheng@gmail.com';
     const from = process.env.ALERT_FROM || 'BigPlan <onboarding@resend.dev>';
-    await fetch('https://api.resend.com/emails', {
+    const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'content-type': 'application/json' },
       body: JSON.stringify({ from, to: [to], subject: '[BigPlan] ' + subject, text })
     });
-  } catch {}                            // an alert failure must never fail the request
+    if (!r.ok) {
+      // Surface the reason in Vercel function logs (no secrets logged)
+      console.error('ALERT_SEND_FAILED', r.status, (await r.text()).slice(0, 300));
+    }
+  } catch (e) { console.error('ALERT_SEND_ERROR', String(e).slice(0, 200)); }
 }
