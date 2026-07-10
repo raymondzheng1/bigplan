@@ -66,6 +66,28 @@
   .m-fill { height:100%; border-radius:99px; background:linear-gradient(90deg,#0a84ff,#bf5af2,#ff9f0a);
     box-shadow:0 0 12px rgba(150,100,255,.8); transition:width 1s var(--spring); }
   .m-foot { display:flex; justify-content:space-between; gap:16px; margin-top:8px; font-size:12px; color:rgba(255,255,255,.5); }
+  .mission { cursor:pointer; }
+  .m-goal { font-size:15px; font-weight:600; color:#fff; margin-top:8px; letter-spacing:-.01em; }
+  #m-marks { position:absolute; inset:0; pointer-events:none; }
+  .m-mark { position:absolute; top:50%; transform:translate(-50%,-50%); width:11px; height:11px;
+    border-radius:50%; background:rgba(255,255,255,.92); border:2px solid #1c1430; }
+  .m-mark.hit { background:#30d158; }
+  .m-mark.late { background:#ff453a; }
+  .m-next { margin-top:10px; font-size:12.5px; font-weight:600; color:rgba(255,255,255,.75); letter-spacing:-.01em; }
+  /* mission dialog fields */
+  .mlab { display:block; font-size:11.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+    color:var(--sub); margin:14px 0 6px; }
+  .mfield { width:100%; border:none; border-radius:11px; padding:10px 12px; font:14px/1.5 inherit;
+    background:rgba(120,120,128,.1); resize:vertical; }
+  .mfield:focus { outline:none; background:#fff; box-shadow:0 0 0 3px var(--tint); }
+  .mrow { display:flex; gap:6px; align-items:center; margin:6px 0; }
+  .mrow input[type=checkbox] { width:17px; height:17px; accent-color:var(--good); flex-shrink:0; }
+  .mrow .ms-name { flex:1; min-width:0; border:none; border-radius:9px; padding:8px 10px; font-size:13.5px; background:rgba(120,120,128,.1); }
+  .mrow .ms-date { border:none; border-radius:9px; padding:7px 8px; font-size:12.5px; background:rgba(120,120,128,.1); width:128px; }
+  .mrow .x { opacity:1; }
+  /* rocks */
+  .taskcard.rock { box-shadow:inset 3px 0 0 0 #ffb800, 0 1px 3px rgba(0,0,0,.08), 0 0 1px rgba(0,0,0,.05); }
+  .rockbtn.on { color:#ffb800 !important; opacity:1 !important; }
   #quote { text-align:right; font-style:italic; }
 
   /* segmented control */
@@ -338,13 +360,18 @@
     </div>
   </header>
 
-  <div class="mission">
+  <div class="mission" onclick="openMission()" title="Tap to edit your mission, keywords & milestones">
     <div class="m-label">One-Year Mission &nbsp;·&nbsp; Jul 1, 2026 → Jun 30, 2027</div>
+    <div class="m-goal" id="m-goal" style="display:none"></div>
     <div class="m-row">
       <div class="m-big" id="m-day"></div>
       <div class="m-big m-right" id="m-left"></div>
     </div>
-    <div class="m-bar"><div class="m-fill" id="m-fill" style="width:0%"></div></div>
+    <div style="position:relative">
+      <div class="m-bar"><div class="m-fill" id="m-fill" style="width:0%"></div></div>
+      <div id="m-marks"></div>
+    </div>
+    <div class="m-next" id="m-next"></div>
     <div class="m-foot"><span id="m-pct"></span><span id="quote"></span></div>
   </div>
 
@@ -507,6 +534,24 @@
     <div class="dlgrow" style="justify-content:center">
       <button class="dlg-new" onclick="downloadView()">Download</button>
       <button class="dlg-cancel" style="color:rgba(255,255,255,.8)" onclick="$('viewer').classList.remove('on')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- mission & milestones dialog -->
+<div id="missiondlg" class="overlay">
+  <div class="dialog" style="width:min(540px, calc(100vw - 40px))" onclick="event.stopPropagation()">
+    <h3>Your Mission</h3>
+    <label class="mlab">What does “big” mean? One sentence, outcome-shaped</label>
+    <textarea id="m-goal-in" rows="2" class="mfield" placeholder="e.g. By 30 June 2027, Minglitang is live with 1,000 paying users"></textarea>
+    <label class="mlab">Mission keywords (match your task names, comma-separated)</label>
+    <input id="m-kw-in" class="mfield" placeholder="minglitang">
+    <label class="mlab">Milestones (max 5 — dated, checkable)</label>
+    <div id="m-list"></div>
+    <button class="clearbtn" onclick="addMilestoneRow()">+ Add milestone</button>
+    <div class="dlgrow">
+      <button class="dlg-merge" onclick="saveMission()">Save</button>
+      <button class="dlg-cancel" onclick="$('missiondlg').classList.remove('on')">Cancel</button>
     </div>
   </div>
 </div>
@@ -1001,7 +1046,9 @@ const MAX_FILE = 1.5 * 1024 * 1024;
    pull — never at script parse time. Initializing early caused stale in-memory data
    to overwrite freshly-pulled cloud data on the first edit (the cross-device sync bug). */
 let cols = [], tasks = [];
+let mission = { goal: '', keywords: ['minglitang'], milestones: [] };
 function initState() {
+  mission = load('tk_mission', { goal: '', keywords: ['minglitang'], milestones: [] });
   cols = load('tk_cols', null) || [
     { id: 'c-todo', name: 'To Do' },
     { id: 'c-done', name: 'Done' }
@@ -1108,10 +1155,16 @@ function taskLi(t) {
   att.title = 'Attach file';
   att.onclick = () => { attachTarget = t; $('attachfile').click(); };
   if (!t.done) {                        // move-to-top (not useful in the date-grouped Done column)
+    const isRock = t.rockWeek === weekKey();
+    if (isRock) li.classList.add('rock');
+    const rk = document.createElement('button'); rk.className = 'x up rockbtn' + (isRock ? ' on' : '');
+    rk.textContent = isRock ? '★' : '☆';
+    rk.title = isRock ? 'Remove from this week’s rocks' : 'Make this a rock for this week (max 3)';
+    rk.onclick = () => toggleRock(t);
     const up = document.createElement('button'); up.className = 'x up'; up.textContent = '⤒';
     up.title = 'Move to top';
     up.onclick = () => moveToTop(t);
-    row.append(lab, sp, up, att, del);
+    row.append(lab, sp, rk, up, att, del);
   } else {
     row.append(lab, sp, att, del);
   }
@@ -1352,10 +1405,14 @@ function renderBoard() {
   // completed scoreboard: today / last 7 days / last 30 days
   const dayStart = (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime(); })();
   const cnt = since => tasks.filter(t => t.done && (t.doneAt || 0) >= since).length;
+  const wkR = weekKey();
+  const rocks = tasks.filter(t => t.rockWeek === wkR);
   $('stats').innerHTML =
     '<span class="stat"><b>' + cnt(dayStart) + '</b>done today</span>' +
     '<span class="stat"><b>' + cnt(dayStart - 6 * 864e5) + '</b>last 7 days</span>' +
-    '<span class="stat"><b>' + cnt(dayStart - 29 * 864e5) + '</b>last 30 days</span>';
+    '<span class="stat"><b>' + cnt(dayStart - 29 * 864e5) + '</b>last 30 days</span>' +
+    (rocks.length ? '<span class="stat">★ <b>' + rocks.filter(t => t.done).length + '/' + rocks.length + '</b>rocks this week</span>' : '');
+  renderMission();
 }
 
 function clearCompleted() {
@@ -1399,6 +1456,10 @@ function buildReport() {
   L.push('Tasks completed:  ' + done.length + (daysWorked ? '  (across ' + daysWorked + ' active day' + (daysWorked > 1 ? 's' : '') + ')' : ''));
   const totalTime = done.reduce((s, t) => s + (t.timeSpent || 0), 0);
   L.push('Time tracked:     ' + (totalTime ? fmtDurLabel(totalTime) : '—'));
+  const al = alignment7d();
+  L.push('Mission time:     ' + (al !== null ? al + '% of tracked time (7d)' : '—'));
+  const wkR = weekKey(), rocks = tasks.filter(t => t.rockWeek === wkR);
+  L.push('Weekly rocks:     ' + (rocks.length ? rocks.filter(t => t.done).length + '/' + rocks.length + ' done' : 'none set'));
   L.push('Focus sessions:   ' + focus);
   L.push('Open items:       ' + open.length);
   L.push('');
@@ -1725,6 +1786,7 @@ $('overlay').addEventListener('click', e => { if (e.target === $('overlay')) dup
 $('report').addEventListener('click', e => { if (e.target === $('report')) $('report').classList.remove('on'); });
 $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').classList.remove('on'); });
 $('work').addEventListener('click', e => { if (e.target === $('work')) closeWork(); });
+$('missiondlg').addEventListener('click', e => { if (e.target === $('missiondlg')) $('missiondlg').classList.remove('on'); });
 $('repPeriod').addEventListener('change', renderReport);
 $('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
 
@@ -1735,9 +1797,11 @@ const STOP = new Set(('the,to,a,an,for,with,on,in,my,and,of,at,from,all,this,tha
   + 'went,come,came,make,made,take,took,give,gave,put,use,used,via,per,when,what,how,then,than,now,not,'
   + 'check,review,write,call,meet,meeting,finish,run,read,reply,ask,pay,test,add,change,listen,play,send,create,'
   + 'update,fix,look,see,watch,buy,clean,plan,book,email,message,talk,going,further,progress,report,today,tomorrow').split(','));
+const ALIASES = { mlt: 'minglitang' };   // same project, different names — extend as needed
 function tokensOf(text) {
   return norm(text).split(' ')
     .map(w => w.replace(/s$/, ''))
+    .map(w => ALIASES[w] || w)
     .filter(w => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w) && !/^http/.test(w));
 }
 function autoCategories() {
@@ -1803,7 +1867,9 @@ function renderInsights() {
   el.innerHTML =
     icard('Mission pace',
       `<div class="irow"><b>${done.length}</b> completed · <b>${(done.length / Math.max(missionDayN, 1)).toFixed(1)}</b>/day average · active on <b>${activeDays}</b> of ${missionDayN} mission days</div>` +
-      `<div class="irow">This week <b>${wk}</b> vs last week <b>${wkPrev}</b>${trend !== null ? ` (<b>${trend >= 0 ? '+' : ''}${trend}%</b>)` : ''} · median added→done: <b>${median < 1 ? 'same day' : Math.round(median) + ' day' + (Math.round(median) > 1 ? 's' : '')}</b></div>`)
+      `<div class="irow">This week <b>${wk}</b> vs last week <b>${wkPrev}</b>${trend !== null ? ` (<b>${trend >= 0 ? '+' : ''}${trend}%</b>)` : ''} · median added→done: <b>${median < 1 ? 'same day' : Math.round(median) + ' day' + (Math.round(median) > 1 ? 's' : '')}</b></div>` +
+      (() => { const al = alignment7d(); const wkR = weekKey(); const rocks = tasks.filter(t => t.rockWeek === wkR);
+        return `<div class="irow">Mission time (7d): <b>${al !== null ? al + '%' : '—'}</b> · rocks this week: <b>${rocks.length ? rocks.filter(t => t.done).length + '/' + rocks.length : 'none set'}</b></div>`; })())
     + icard('Projects — detected automatically',
       bars(cats.slice(0, 7).map(c => ({
         label: c.name === 'other' ? 'Other' : c.name.toUpperCase(),
@@ -1826,6 +1892,105 @@ function renderInsights() {
     + icard('Needs attention',
       (aging.length ? aging.map(a => `<div class="irow">• ${esc(a.t.text.slice(0, 64))}${a.t.text.length > 64 ? '…' : ''} <span class="hint">— ${a.days <= 0 ? 'added today' : a.days + 'd old'}</span></div>`).join('') : '<div class="hint">Nothing aging. Clean board!</div>')
       + (open.length > 12 ? `<div class="hint" style="margin-top:8px">${open.length} open items in total — a weekly prune of the oldest keeps the board honest.</div>` : ''));
+}
+
+/* ============ mission strategy: goal, milestones, alignment, weekly rocks ============ */
+function weekKey() {
+  const d = new Date(); const off = (d.getDay() + 6) % 7;   // Monday-based week
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() - off);
+  return m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0') + '-' + String(m.getDate()).padStart(2, '0');
+}
+function missionKeywords() {
+  return (mission.keywords || []).map(k => ALIASES[k] || k).filter(Boolean);
+}
+function alignment7d() {                 // share of tracked time (last 7 days) on mission-keyword tasks
+  const cutoff = Date.now() - 7 * 864e5;
+  const kws = missionKeywords();
+  if (!kws.length) return null;
+  let missionSecs = 0, total = 0;
+  tasks.forEach(t => {
+    let secs = 0;
+    if (t.sessions && t.sessions.length) t.sessions.forEach(([s, d]) => { if (s >= cutoff) secs += d; });
+    else if (t.timeSpent && t.done && t.doneAt >= cutoff) secs = t.timeSpent;
+    if (!secs) return;
+    total += secs;
+    const tk = tokensOf(t.text);
+    if (kws.some(k => tk.includes(k))) missionSecs += secs;
+  });
+  return total >= 600 ? Math.round(missionSecs / total * 100) : null; // need ≥10 min tracked to be meaningful
+}
+function renderMission() {
+  const g = $('m-goal');
+  if (mission.goal) { g.textContent = mission.goal; g.style.display = 'block'; } else g.style.display = 'none';
+  const start = new Date(2026, 6, 1).getTime(), end = new Date(2027, 5, 30).getTime(), today = Date.now();
+  const marks = $('m-marks'); marks.innerHTML = '';
+  (mission.milestones || []).forEach(m => {
+    if (!m.date) return;
+    const ts = new Date(m.date + 'T12:00').getTime();
+    const pct = Math.max(0.5, Math.min(99.5, (ts - start) / (end - start) * 100));
+    const dot = document.createElement('div');
+    dot.className = 'm-mark' + (m.done ? ' hit' : (ts < today ? ' late' : ''));
+    dot.style.left = pct + '%';
+    dot.title = m.name + ' · ' + m.date + (m.done ? ' ✓' : '');
+    marks.appendChild(dot);
+  });
+  const undone = (mission.milestones || []).filter(m => !m.done && m.date).sort((a, b) => a.date < b.date ? -1 : 1);
+  let line;
+  if (undone.length) {
+    const d = Math.ceil((new Date(undone[0].date + 'T12:00') - today) / 864e5);
+    line = d < 0 ? '⚠ Overdue: ' + undone[0].name + ' (' + (-d) + 'd)' : 'Next: ' + undone[0].name + ' · ' + d + 'd';
+  } else if ((mission.milestones || []).length) line = 'All milestones achieved 🎉';
+  else line = 'Tap to set your goal & milestones';
+  const al = alignment7d();
+  $('m-next').textContent = line + (al !== null ? '   ·   Mission time ' + al + '% (7d)' : '');
+}
+function openMission() {
+  $('m-goal-in').value = mission.goal || '';
+  $('m-kw-in').value = (mission.keywords || []).join(', ');
+  const list = $('m-list'); list.innerHTML = '';
+  (mission.milestones || []).forEach(m => list.appendChild(msRow(m)));
+  $('missiondlg').classList.add('on');
+}
+function msRow(m) {
+  const row = document.createElement('div'); row.className = 'mrow';
+  const ck = document.createElement('input'); ck.type = 'checkbox'; ck.checked = !!m.done; ck.title = 'Achieved';
+  const nm = document.createElement('input'); nm.type = 'text'; nm.className = 'ms-name'; nm.placeholder = 'Milestone'; nm.value = m.name || '';
+  const dt = document.createElement('input'); dt.type = 'date'; dt.className = 'ms-date'; dt.value = m.date || '';
+  const rm = document.createElement('button'); rm.className = 'x'; rm.textContent = '✕';
+  rm.onclick = () => row.remove();
+  row.append(ck, nm, dt, rm);
+  return row;
+}
+function addMilestoneRow() {
+  if ($('m-list').children.length >= 5) { alert('Five milestones max — keep it strategic.'); return; }
+  $('m-list').appendChild(msRow({}));
+}
+function saveMission() {
+  const ms = Array.from($('m-list').children).map(r => ({
+    done: r.querySelector('input[type=checkbox]').checked,
+    name: r.querySelector('.ms-name').value.trim(),
+    date: r.querySelector('.ms-date').value
+  })).filter(m => m.name);
+  ms.sort((a, b) => (a.date || '9999') < (b.date || '9999') ? -1 : 1);
+  mission = {
+    goal: $('m-goal-in').value.trim(),
+    keywords: $('m-kw-in').value.split(',').map(s => norm(s).split(' ')[0]).filter(Boolean),
+    milestones: ms
+  };
+  store('tk_mission', mission);
+  renderMission();
+  $('missiondlg').classList.remove('on');
+  toast('Mission updated');
+}
+function toggleRock(t) {
+  const wk = weekKey();
+  if (t.rockWeek === wk) { delete t.rockWeek; saveAll(); return; }
+  if (tasks.filter(x => x.rockWeek === wk).length >= 3) {
+    alert('Three rocks max per week — that’s the point. Unstar one first.');
+    return;
+  }
+  t.rockWeek = wk;
+  saveAll(); toast('Rock set for this week 🪨');
 }
 
 /* ============ habits ============ */

@@ -1,6 +1,6 @@
 /* BigPlan service worker — offline-first (stale-while-revalidate).
    Bump CACHE version on every release so clients pick up the new build. */
-const CACHE = 'bigplan-v21';
+const CACHE = 'bigplan-v23';
 const ASSETS = [
   './',
   './index.html',
