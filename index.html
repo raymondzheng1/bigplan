@@ -70,7 +70,7 @@
 
   /* segmented control */
   .seg { position:relative; display:flex; background:rgba(120,120,128,.12); border-radius:12px; padding:2px; margin-bottom:24px; }
-  .seg .thumb { position:absolute; top:2px; left:2px; height:calc(100% - 4px); width:calc(25% - 2px);
+  .seg .thumb { position:absolute; top:2px; left:2px; height:calc(100% - 4px); width:calc(20% - 2px);
     background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.08);
     transition:transform .35s var(--spring); }
   .seg button { position:relative; z-index:1; flex:1; border:none; background:none; padding:9px 0;
@@ -150,6 +150,19 @@
   @keyframes badgefloat { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-2px); } }
   .dategroup { font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
     color:var(--sub); padding:8px 4px 2px; list-style:none; }
+  /* insights */
+  .icard { margin-bottom:22px; }
+  .ihead { font-size:11.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--sub); margin-bottom:10px; }
+  .isub { font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:#c7c7cc; margin-bottom:6px; }
+  .irow { font-size:13.5px; margin:5px 0; letter-spacing:-.01em; }
+  .irow b { font-weight:700; }
+  .brow { display:flex; align-items:center; gap:10px; margin:6px 0; }
+  .blabel { width:112px; font-size:12.5px; color:var(--sub); text-align:right; flex-shrink:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .btrack { flex:1; height:10px; background:rgba(120,120,128,.1); border-radius:99px; overflow:hidden; }
+  .bfill { height:100%; background:var(--grad); border-radius:99px; transition:width .6s var(--spring); }
+  .bval { width:112px; font-size:11.5px; color:var(--sub); flex-shrink:0; }
+  @media (max-width:640px) { .blabel, .bval { width:86px; font-size:11px; } .seg button { font-size:12.5px; } }
   #repPeriod { border:none; background:rgba(120,120,128,.12); border-radius:10px; padding:8px 12px;
     font-size:13.5px; margin:8px 0 12px; color:var(--ink); }
   #repText { background:rgba(120,120,128,.08); border-radius:12px; padding:14px 16px;
@@ -340,6 +353,7 @@
     <button data-p="tasks" class="on">Tasks</button>
     <button data-p="habits">Habits</button>
     <button data-p="timer">Focus</button>
+    <button data-p="insights">Insights</button>
     <button data-p="notes">Notes</button>
   </div>
 
@@ -399,6 +413,10 @@
       </div>
       <div id="sessions" style="margin-top:18px;color:var(--sub);font-size:13.5px"></div>
     </div>
+  </div>
+
+  <div class="card pane" id="p-insights">
+    <div id="insightsBody"></div>
   </div>
 
   <div class="card pane" id="p-notes">
@@ -921,6 +939,7 @@ segBtns.forEach((b, i) => b.onclick = () => {
   document.querySelectorAll('.pane').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); $('p-' + b.dataset.p).classList.add('on');
   $('thumb').style.transform = `translateX(${i * 100}%)`;
+  if (b.dataset.p === 'insights') renderInsights();
 });
 
 /* ---- export / import ---- */
@@ -1675,6 +1694,106 @@ $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('vi
 $('work').addEventListener('click', e => { if (e.target === $('work')) closeWork(); });
 $('repPeriod').addEventListener('change', renderReport);
 $('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
+
+/* ============ insights (all computed locally — nothing stored, nothing sent) ============ */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const STOP = new Set(('the,to,a,an,for,with,on,in,my,and,of,at,from,all,this,that,it,is,are,was,be,by,up,out,into,'
+  + 'about,after,before,me,him,her,them,his,its,our,your,their,will,can,need,needs,do,does,did,done,get,got,go,'
+  + 'went,come,came,make,made,take,took,give,gave,put,use,used,via,per,when,what,how,then,than,now,not,'
+  + 'check,review,write,call,meet,meeting,finish,run,read,reply,ask,pay,test,add,change,listen,play,send,create,'
+  + 'update,fix,look,see,watch,buy,clean,plan,book,email,message,talk,going,further,progress,report,today,tomorrow').split(','));
+function tokensOf(text) {
+  return norm(text).split(' ')
+    .map(w => w.replace(/s$/, ''))
+    .filter(w => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w) && !/^http/.test(w));
+}
+function autoCategories() {
+  const freq = {};
+  tasks.forEach(t => { new Set(tokensOf(t.text)).forEach(w => freq[w] = (freq[w] || 0) + 1); });
+  const cats = Object.keys(freq).filter(w => freq[w] >= 2)
+    .sort((a, b) => freq[b] - freq[a]).slice(0, 12);
+  const groups = {};
+  tasks.forEach(t => {
+    const tk = tokensOf(t.text);
+    let best = null;
+    cats.forEach(c => { if (tk.includes(c) && (best === null || freq[c] > freq[best])) best = c; });
+    const key = best || 'other';
+    const g = groups[key] = groups[key] || { name: key, total: 0, done: 0, time: 0 };
+    g.total++; if (t.done) g.done++; g.time += t.timeSpent || 0;
+  });
+  return Object.values(groups).sort((a, b) => (b.time - a.time) || (b.total - a.total));
+}
+function bars(items) {
+  const max = Math.max(...items.map(i => i.value), 1);
+  return items.map(i =>
+    `<div class="brow"><span class="blabel" title="${esc(i.label)}">${esc(i.label)}</span>` +
+    `<div class="btrack"><div class="bfill" style="width:${Math.max(2, Math.round(i.value / max * 100))}%"></div></div>` +
+    `<span class="bval">${esc(i.disp ?? i.value)}</span></div>`).join('');
+}
+function icard(title, body) { return `<div class="icard"><div class="ihead">${title}</div>${body}</div>`; }
+function renderInsights() {
+  const el = $('insightsBody');
+  const done = tasks.filter(t => t.done && t.doneAt);
+  const open = tasks.filter(t => !t.done);
+  if (done.length < 3) { el.innerHTML = '<div class="hint">Complete a few more tasks and your insights will appear here.</div>'; return; }
+  const n = new Date(), dayStart = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+
+  const activeDays = new Set(done.map(t => new Date(t.doneAt).toDateString())).size;
+  const wk = done.filter(t => t.doneAt >= dayStart - 6 * 864e5).length;
+  const wkPrev = done.filter(t => t.doneAt >= dayStart - 13 * 864e5 && t.doneAt < dayStart - 6 * 864e5).length;
+  const trend = wkPrev ? Math.round((wk - wkPrev) / wkPrev * 100) : null;
+  const cycles = done.filter(t => t.createdAt).map(t => (t.doneAt - t.createdAt) / 864e5).sort((a, b) => a - b);
+  const median = cycles.length ? cycles[Math.floor(cycles.length / 2)] : 0;
+
+  const tracked = done.filter(t => t.timeSpent > 0);
+  const sum = a => a.reduce((s, t) => s + t.timeSpent, 0);
+  const deep = tracked.filter(t => t.timeSpent >= 3600);
+  const mid = tracked.filter(t => t.timeSpent >= 900 && t.timeSpent < 3600);
+  const shallow = tracked.filter(t => t.timeSpent < 900);
+  const coverage = Math.round(tracked.length / done.length * 100);
+
+  const wd = [0, 0, 0, 0, 0, 0, 0];
+  done.forEach(t => wd[new Date(t.doneAt).getDay()]++);
+  const wdNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const buckets = { 'Morning 5–12': 0, 'Afternoon 12–17': 0, 'Evening 17–22': 0, 'Night 22–5': 0 };
+  done.forEach(t => { const h = new Date(t.doneAt).getHours();
+    if (h >= 5 && h < 12) buckets['Morning 5–12']++;
+    else if (h >= 12 && h < 17) buckets['Afternoon 12–17']++;
+    else if (h >= 17 && h < 22) buckets['Evening 17–22']++;
+    else buckets['Night 22–5']++; });
+
+  const aging = open.map(t => ({ t, days: Math.floor((Date.now() - (t.createdAt || Date.now())) / 864e5) }))
+    .sort((a, b) => b.days - a.days).slice(0, 5);
+  const cats = autoCategories();
+  const zeroTimeCats = cats.filter(c => c.name !== 'other' && c.time === 0 && (c.total - c.done) > 1);
+
+  el.innerHTML =
+    icard('Mission pace',
+      `<div class="irow"><b>${done.length}</b> completed · <b>${(done.length / Math.max(missionDayN, 1)).toFixed(1)}</b>/day average · active on <b>${activeDays}</b> of ${missionDayN} mission days</div>` +
+      `<div class="irow">This week <b>${wk}</b> vs last week <b>${wkPrev}</b>${trend !== null ? ` (<b>${trend >= 0 ? '+' : ''}${trend}%</b>)` : ''} · median added→done: <b>${median < 1 ? 'same day' : Math.round(median) + ' day' + (Math.round(median) > 1 ? 's' : '')}</b></div>`)
+    + icard('Projects — detected automatically',
+      bars(cats.slice(0, 7).map(c => ({
+        label: c.name === 'other' ? 'Other' : c.name.toUpperCase(),
+        value: c.time || c.total * 60,
+        disp: (c.time ? fmtDurLabel(c.time) + ' · ' : '') + c.done + '/' + c.total + ' done'
+      })))
+      + (zeroTimeCats.length ? `<div class="hint" style="margin-top:8px">⚠ ${zeroTimeCats.map(c => c.name.toUpperCase()).join(', ')} ha${zeroTimeCats.length > 1 ? 've' : 's'} open tasks but zero tracked time — starving project${zeroTimeCats.length > 1 ? 's' : ''}?</div>` : '')
+      + '<div class="hint" style="margin-top:6px">Grouped by recurring words in your task names — no tagging needed.</div>')
+    + icard('Work depth',
+      bars([
+        { label: 'Deep (>1h)', value: sum(deep), disp: fmtDurLabel(sum(deep)) + ' · ' + deep.length },
+        { label: 'Medium', value: sum(mid), disp: fmtDurLabel(sum(mid)) + ' · ' + mid.length },
+        { label: 'Quick (<15m)', value: sum(shallow), disp: fmtDurLabel(sum(shallow)) + ' · ' + shallow.length }
+      ])
+      + `<div class="hint" style="margin-top:8px">Time tracked on ${coverage}% of completed tasks (${tracked.length}/${done.length})${coverage < 60 ? ' — track more via work mode for sharper insights' : ''}.` +
+      (shallow.length >= 4 ? ` You have ${shallow.length} quick tasks — batching them into one admin block protects your deep-work hours.` : '') + '</div>')
+    + icard('Rhythm',
+      '<div class="isub">Completions by weekday</div>' + bars(wdNames.map((nm, i) => ({ label: nm, value: wd[i] })))
+      + '<div class="isub" style="margin-top:12px">By time of day</div>' + bars(Object.entries(buckets).map(([k, v]) => ({ label: k, value: v }))))
+    + icard('Needs attention',
+      (aging.length ? aging.map(a => `<div class="irow">• ${esc(a.t.text.slice(0, 64))}${a.t.text.length > 64 ? '…' : ''} <span class="hint">— ${a.days <= 0 ? 'added today' : a.days + 'd old'}</span></div>`).join('') : '<div class="hint">Nothing aging. Clean board!</div>')
+      + (open.length > 12 ? `<div class="hint" style="margin-top:8px">${open.length} open items in total — a weekly prune of the oldest keeps the board honest.</div>` : ''));
+}
 
 /* ============ habits ============ */
 let habits = []; // loaded in initState()
