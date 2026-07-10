@@ -16,6 +16,11 @@
 - Passcode: verified server-side when online; SHA-256 hash cached locally for offline unlocks. A privacy gate, not encryption.
 - `sw.js`: offline-first SWR for static assets; **never caches `/api/`**. **Bump `CACHE = 'bigplan-vN'` every release.**
 - Mission window fixed: 2026-07-01 → 2027-06-30, computed at load.
+- **Signal collection (feeds Insights + planned Phase-3 AI review).** Collected silently, all local + synced in the state blob:
+  - per task: `createdAt`, `doneAt`, `timeSpent`, `sessions` [[startMs, secs], …] (cap 30), `moves` (reorder count), `src` (typed/voice/file), `createdDevice`/`doneDevice` (mobile/desktop)
+  - `tk_usage` — app opens + work-mode sessions per day (rolling 60 days)
+  - `tk_deleted` — last 50 tasks deleted while incomplete (abandonment churn, with age at deletion)
+- **Phase 3 (planned, not built): AI weekly review.** `/api/review` reads the KV state server-side → Anthropic API (`ANTHROPIC_API_KEY`, server-only, small model) → chief-of-staff style weekly brief; delivered on demand from the Insights tab + Monday-morning email via Vercel cron (guard with `CRON_SECRET`) through the existing Resend helper. Privacy note: task text leaves the device only when this ships and is enabled.
 
 ## Required environment variables (placeholders only in repo)
 | Var | Where | Purpose |

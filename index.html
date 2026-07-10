@@ -1039,6 +1039,23 @@ function initState() {
 
 function saveAll() { store('tk_tasks', tasks); store('tk_cols', cols); renderBoard(); }
 
+/* ---- silent signal collection (feeds Insights + the future AI review) ---- */
+const devTag = () => (matchMedia('(pointer:coarse)').matches || innerWidth < 700) ? 'mobile' : 'desktop';
+function usageBump(kind) {              // app opens (o) + work-mode sessions (w) per day, rolling 60 days
+  const u = load('tk_usage', {});
+  const k = todayKey();
+  u[k] = u[k] || { o: 0, w: 0 };
+  u[k][kind] = (u[k][kind] || 0) + 1;
+  const days = Object.keys(u).sort();
+  if (days.length > 60) days.slice(0, days.length - 60).forEach(d => delete u[d]);
+  store('tk_usage', u);
+}
+function logDeleted(t) {                // abandonment churn: what gets deleted without being done
+  const d = load('tk_deleted', []);
+  d.push({ t: t.text.slice(0, 60), ts: Date.now(), age: Math.round((Date.now() - (t.createdAt || Date.now())) / 864e5) });
+  store('tk_deleted', d.slice(-50));
+}
+
 function doneColId() {
   const c = cols.find(c => c.id === 'c-done' || /^(done|complete[d]?|完成)$/i.test((c.name || '').trim())) || cols[cols.length - 1];
   return c ? c.id : null;
@@ -1069,6 +1086,7 @@ function taskLi(t) {
     t.done = cb.checked;
     if (cb.checked) {                       // completing → stamp it and move to the Done list
       t.doneAt = Date.now();
+      t.doneDevice = devTag();
       const dcc = doneColId();
       if (dcc && t.col !== dcc) { t.prevCol = t.col; t.col = dcc; }
       bumpDone();
@@ -1085,7 +1103,7 @@ function taskLi(t) {
   const sp = document.createElement('span'); sp.className = 't'; sp.textContent = t.text;
   if (!t.done) { sp.style.cursor = 'pointer'; sp.title = 'Tap to focus on this task and track time'; sp.onclick = () => openWork(t); }
   const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
-  del.onclick = () => { tasks.splice(tasks.indexOf(t), 1); saveAll(); };
+  del.onclick = () => { if (!t.done) logDeleted(t); tasks.splice(tasks.indexOf(t), 1); saveAll(); };
   const att = document.createElement('button'); att.className = 'x up'; att.textContent = '📎';
   att.title = 'Attach file';
   att.onclick = () => { attachTarget = t; $('attachfile').click(); };
@@ -1155,7 +1173,16 @@ function clearMarks() { document.querySelectorAll('.insert-above,.insert-below,.
   .forEach(x => x.classList.remove('insert-above','insert-below','dragover-file','dragover-col')); }
 
 /* ---- work mode: per-card time tracking ---- */
-let workTask = null, workTick = null, workStartMs = 0, workBase = 0;
+let workTask = null, workTick = null, workStartMs = 0, workBase = 0, workSessStart = 0;
+function pushSession() {                // per-task work session log: [startMs, seconds]
+  if (!workSessStart || !workTask) return;
+  const secs = Math.round((Date.now() - workSessStart) / 1000);
+  if (secs >= 30) {
+    (workTask.sessions = workTask.sessions || []).push([workSessStart, secs]);
+    if (workTask.sessions.length > 30) workTask.sessions = workTask.sessions.slice(-30);
+  }
+  workSessStart = 0;
+}
 function fmtDur(s) {
   s = Math.round(s);
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
@@ -1173,7 +1200,8 @@ function paintWork() {
   $('workPrev').textContent = (workBase > 0 && !workStartMs) ? 'Logged so far: ' + fmtDurLabel(workBase) : ' ';
 }
 function openWork(t) {
-  workTask = t; workBase = t.timeSpent || 0; workStartMs = 0;
+  usageBump('w');
+  workTask = t; workBase = t.timeSpent || 0; workStartMs = 0; workSessStart = 0;
   $('workText').textContent = t.text;
   $('workToggle').textContent = workBase > 0 ? 'Resume' : 'Start';
   paintWork();
@@ -1181,19 +1209,19 @@ function openWork(t) {
 }
 function workToggle() {
   if (workStartMs) {                    // pause — persist what's logged
-    workBase = curElapsed(); workStartMs = 0;
+    workBase = curElapsed(); pushSession(); workStartMs = 0;
     clearInterval(workTick); workTick = null;
     workTask.timeSpent = Math.round(workBase); saveAll();
     $('workToggle').textContent = 'Resume';
   } else {                              // start / resume
-    workStartMs = Date.now();
+    workStartMs = Date.now(); workSessStart = workStartMs;
     workTick = setInterval(paintWork, 500);
     $('workToggle').textContent = 'Pause';
   }
   paintWork();
 }
 function stopAndSave() {
-  if (workStartMs) { workBase = curElapsed(); workStartMs = 0; }
+  if (workStartMs) { workBase = curElapsed(); pushSession(); workStartMs = 0; }
   clearInterval(workTick); workTick = null;
   if (workTask && workBase > 0) workTask.timeSpent = Math.round(workBase);
 }
@@ -1207,7 +1235,7 @@ function workComplete() {
   const t = workTask;
   $('work').classList.remove('on'); workTask = null;
   if (!t) return;
-  t.done = true; t.doneAt = Date.now();
+  t.done = true; t.doneAt = Date.now(); t.doneDevice = devTag();
   const dc = doneColId();
   if (dc && t.col !== dc) { t.prevCol = t.col; t.col = dc; }
   bumpDone();
@@ -1216,6 +1244,7 @@ function workComplete() {
 
 function moveToTop(t) {
   const idx = tasks.indexOf(t); if (idx < 0) return;
+  t.moves = (t.moves || 0) + 1;
   tasks.splice(idx, 1);
   const firstIdx = tasks.findIndex(x => x.col === t.col);
   tasks.splice(firstIdx < 0 ? tasks.length : firstIdx, 0, t);
@@ -1225,6 +1254,7 @@ function moveToTop(t) {
 
 function moveTask(id, target, before) {
   const t = tasks.find(x => x.id === id); if (!t || t === target) return;
+  t.moves = (t.moves || 0) + 1;         // shuffle count: a procrastination signal
   tasks.splice(tasks.indexOf(t), 1);
   let idx = tasks.indexOf(target);
   if (!before) idx++;
@@ -1473,7 +1503,7 @@ function downloadView() {
 }
 
 /* voice input: tap 🎤, speak, text lands in the task box; tap again to stop */
-let rec = null, recActive = false;
+let rec = null, recActive = false, voiceUsed = false;
 function toggleVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { alert('Voice input is not supported in this browser. Try Chrome, Edge, or Safari.'); return; }
@@ -1488,6 +1518,7 @@ function toggleVoice() {
     let txt = '';
     for (const r of e.results) txt += r[0].transcript;
     $('ti').value = (base ? base + ' ' : '') + txt.trim();
+    if (txt.trim()) voiceUsed = true;
   };
   rec.onstart = () => { recActive = true; $('micbtn').classList.add('rec'); };
   const stopUI = () => { recActive = false; $('micbtn').classList.remove('rec'); $('ti').focus(); };
@@ -1666,7 +1697,9 @@ function addTask() {
   createTask(v);
 }
 function createTask(v) {
-  tasks.push({ id: uid(), text: v, done: false, files: [], col: cols[0].id, createdAt: Date.now() });
+  tasks.push({ id: uid(), text: v, done: false, files: [], col: cols[0].id, createdAt: Date.now(),
+    src: voiceUsed ? 'voice' : 'typed', createdDevice: devTag() });
+  voiceUsed = false;
   $('ti').value = '';
   saveAll();
 }
@@ -1932,6 +1965,7 @@ let booted = false;
 function boot() {
   if (booted) return; booted = true;
   initState();          // read state from localStorage only AFTER the cloud pull
+  usageBump('o');       // daily open count (engagement rhythm for insights)
   renderBoard();
   renderHabits();
   $('focusMin').value = durs.focus; $('breakMin').value = durs.break;
