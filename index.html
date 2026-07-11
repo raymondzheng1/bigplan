@@ -159,6 +159,8 @@
   .addcol:hover { border-color:var(--blue); color:var(--blue); background:var(--tint); }
 
   .tstamp { font-size:10.5px; color:#c7c7cc; margin-top:7px; letter-spacing:0; }
+  .tnote { font-size:12px; color:var(--sub); margin-top:6px; white-space:pre-wrap; word-break:break-word;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   /* "up next" spotlight on the first To-Do card */
   .taskcard.next-up { animation:nextpulse 2.4s ease-in-out infinite; }
   .taskcard.next-up.dragging { animation:none; }
@@ -516,6 +518,7 @@
   <div class="dialog" style="text-align:center; width:min(460px, calc(100vw - 40px))">
     <div class="hint" style="margin-bottom:4px">Working on</div>
     <h3 id="workText" style="margin-bottom:2px"></h3>
+    <div id="workNote" class="hint" style="white-space:pre-wrap; max-height:90px; overflow:auto; margin-bottom:4px"></div>
     <div id="workPrev" class="hint" style="min-height:18px"></div>
     <div id="workClock" style="font-size:58px; font-weight:200; letter-spacing:-.02em; font-variant-numeric:tabular-nums; margin:10px 0 4px">00:00</div>
     <div class="dlgrow">
@@ -534,6 +537,21 @@
     <div class="dlgrow" style="justify-content:center">
       <button class="dlg-new" onclick="downloadView()">Download</button>
       <button class="dlg-cancel" style="color:rgba(255,255,255,.8)" onclick="$('viewer').classList.remove('on')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- task edit dialog -->
+<div id="editdlg" class="overlay">
+  <div class="dialog" style="width:min(500px, calc(100vw - 40px))">
+    <h3>Edit Task</h3>
+    <label class="mlab">Task</label>
+    <textarea id="edit-text" rows="2" class="mfield"></textarea>
+    <label class="mlab">Notes / details (optional)</label>
+    <textarea id="edit-note" rows="4" class="mfield" placeholder="Context, links, sub-steps, anything future-you needs…"></textarea>
+    <div class="dlgrow">
+      <button class="dlg-merge" onclick="saveEdit()">Save</button>
+      <button class="dlg-cancel" onclick="$('editdlg').classList.remove('on')">Cancel</button>
     </div>
   </div>
 </div>
@@ -1151,6 +1169,9 @@ function taskLi(t) {
   if (!t.done) { sp.style.cursor = 'pointer'; sp.title = 'Tap to focus on this task and track time'; sp.onclick = () => openWork(t); }
   const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
   del.onclick = () => { if (!t.done) logDeleted(t); tasks.splice(tasks.indexOf(t), 1); saveAll(); };
+  const ed = document.createElement('button'); ed.className = 'x up'; ed.textContent = '✎';
+  ed.title = 'Edit task';
+  ed.onclick = () => openEdit(t);
   const att = document.createElement('button'); att.className = 'x up'; att.textContent = '📎';
   att.title = 'Attach file';
   att.onclick = () => { attachTarget = t; $('attachfile').click(); };
@@ -1164,11 +1185,17 @@ function taskLi(t) {
     const up = document.createElement('button'); up.className = 'x up'; up.textContent = '⤒';
     up.title = 'Move to top';
     up.onclick = () => moveToTop(t);
-    row.append(lab, sp, rk, up, att, del);
+    row.append(lab, sp, rk, up, ed, att, del);
   } else {
-    row.append(lab, sp, att, del);
+    row.append(lab, sp, ed, att, del);
   }
   li.appendChild(row);
+
+  if (t.note) {
+    const nt = document.createElement('div'); nt.className = 'tnote';
+    nt.textContent = t.note;
+    li.appendChild(nt);
+  }
 
   if (t.files.length) {
     const chips = document.createElement('div'); chips.className = 'chips';
@@ -1256,6 +1283,7 @@ function openWork(t) {
   usageBump('w');
   workTask = t; workBase = t.timeSpent || 0; workStartMs = 0; workSessStart = 0;
   $('workText').textContent = t.text;
+  $('workNote').textContent = t.note || '';
   $('workToggle').textContent = workBase > 0 ? 'Resume' : 'Start';
   paintWork();
   $('work').classList.add('on');
@@ -1787,6 +1815,7 @@ $('report').addEventListener('click', e => { if (e.target === $('report')) $('re
 $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').classList.remove('on'); });
 $('work').addEventListener('click', e => { if (e.target === $('work')) closeWork(); });
 $('missiondlg').addEventListener('click', e => { if (e.target === $('missiondlg')) $('missiondlg').classList.remove('on'); });
+$('editdlg').addEventListener('click', e => { if (e.target === $('editdlg')) $('editdlg').classList.remove('on'); });
 $('repPeriod').addEventListener('change', renderReport);
 $('ti').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
 
@@ -1982,6 +2011,29 @@ function saveMission() {
   $('missiondlg').classList.remove('on');
   toast('Mission updated');
 }
+/* task editing */
+let editTask = null;
+function openEdit(t) {
+  editTask = t;
+  $('edit-text').value = t.text;
+  $('edit-note').value = t.note || '';
+  $('editdlg').classList.add('on');
+  $('edit-text').focus();
+}
+function saveEdit() {
+  if (!editTask) return;
+  const v = $('edit-text').value.trim();
+  if (!v) { alert('Task text cannot be empty.'); return; }
+  editTask.text = v;
+  const note = $('edit-note').value.trim();
+  if (note) editTask.note = note; else delete editTask.note;
+  editTask.editedAt = Date.now();
+  $('editdlg').classList.remove('on');
+  editTask = null;
+  saveAll();
+  toast('Task updated');
+}
+
 function toggleRock(t) {
   const wk = weekKey();
   if (t.rockWeek === wk) { delete t.rockWeek; saveAll(); return; }
