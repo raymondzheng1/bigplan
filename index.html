@@ -158,7 +158,9 @@
     padding:14px 20px; color:var(--sub); font-size:13px; font-weight:500; cursor:pointer; transition:all .2s; white-space:nowrap; }
   .addcol:hover { border-color:var(--blue); color:var(--blue); background:var(--tint); }
 
-  .tstamp { font-size:10.5px; color:#c7c7cc; margin-top:7px; letter-spacing:0; }
+  .tfoot { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; }
+  .tstamp { font-size:10.5px; color:#c7c7cc; letter-spacing:0; min-width:0; }
+  .tacts { display:flex; gap:0; flex-shrink:0; }
   .tnote { font-size:12px; color:var(--sub); margin-top:6px; white-space:pre-wrap; word-break:break-word;
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   /* "up next" spotlight on the first To-Do card */
@@ -1097,6 +1099,9 @@ function initState() {
       if (dc && t.col !== dc) { t.prevCol = t.prevCol || t.col; t.col = dc; }
     }
   });
+  // the Done column always renders last
+  const di = cols.findIndex(c => c.id === dc);
+  if (di >= 0 && di !== cols.length - 1) cols.push(cols.splice(di, 1)[0]);
   habits = load('tk_habits', []);
   durs = load('tk_dur', { focus: 25, break: 5 });
   left = durs[mode] * 60;
@@ -1169,13 +1174,15 @@ function taskLi(t) {
   if (!t.done) { sp.style.cursor = 'pointer'; sp.title = 'Tap to focus on this task and track time'; sp.onclick = () => openWork(t); }
   const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
   del.onclick = () => { if (!t.done) logDeleted(t); tasks.splice(tasks.indexOf(t), 1); saveAll(); };
+  /* actions live in their own bottom row so the task text keeps full width */
   const ed = document.createElement('button'); ed.className = 'x up'; ed.textContent = '✎';
   ed.title = 'Edit task';
   ed.onclick = () => openEdit(t);
   const att = document.createElement('button'); att.className = 'x up'; att.textContent = '📎';
   att.title = 'Attach file';
   att.onclick = () => { attachTarget = t; $('attachfile').click(); };
-  if (!t.done) {                        // move-to-top (not useful in the date-grouped Done column)
+  const acts = document.createElement('div'); acts.className = 'tacts';
+  if (!t.done) {
     const isRock = t.rockWeek === weekKey();
     if (isRock) li.classList.add('rock');
     const rk = document.createElement('button'); rk.className = 'x up rockbtn' + (isRock ? ' on' : '');
@@ -1185,10 +1192,11 @@ function taskLi(t) {
     const up = document.createElement('button'); up.className = 'x up'; up.textContent = '⤒';
     up.title = 'Move to top';
     up.onclick = () => moveToTop(t);
-    row.append(lab, sp, rk, up, ed, att, del);
+    acts.append(rk, up, ed, att, del);
   } else {
-    row.append(lab, sp, ed, att, del);
+    acts.append(ed, att, del);
   }
+  row.append(lab, sp);
   li.appendChild(row);
 
   if (t.note) {
@@ -1214,11 +1222,13 @@ function taskLi(t) {
     li.appendChild(chips);
   }
 
-  const ts = document.createElement('div'); ts.className = 'tstamp';
+  const tfoot = document.createElement('div'); tfoot.className = 'tfoot';
+  const ts = document.createElement('span'); ts.className = 'tstamp';
   ts.textContent = 'Added ' + fmtDate(t.createdAt)
     + (t.done && t.doneAt ? '  ·  ✓ Done ' + fmtDate(t.doneAt) : '')
     + (t.timeSpent ? '  ·  ⏱ ' + fmtDurLabel(t.timeSpent) : '');
-  li.appendChild(ts);
+  tfoot.append(ts, acts);
+  li.appendChild(tfoot);
 
   li.addEventListener('dragstart', e => {
     draggedId = t.id;
@@ -1423,7 +1433,11 @@ function renderBoard() {
   const addCol = document.createElement('button'); addCol.className = 'addcol'; addCol.textContent = '+ Add list';
   addCol.onclick = () => {
     const v = prompt('New list name:');
-    if (v && v.trim()) { cols.push({ id: uid(), name: v.trim() }); saveAll(); }
+    if (v && v.trim()) {
+      const di = cols.findIndex(c => c.id === doneColId());   // new lists slot in BEFORE Done
+      cols.splice(di >= 0 ? di : cols.length, 0, { id: uid(), name: v.trim() });
+      saveAll();
+    }
   };
   board.appendChild(addCol);
 
@@ -1435,10 +1449,13 @@ function renderBoard() {
   const cnt = since => tasks.filter(t => t.done && (t.doneAt || 0) >= since).length;
   const wkR = weekKey();
   const rocks = tasks.filter(t => t.rockWeek === wkR);
+  const cntNew = since => tasks.filter(t => (t.createdAt || 0) >= since).length;
   $('stats').innerHTML =
     '<span class="stat"><b>' + cnt(dayStart) + '</b>done today</span>' +
-    '<span class="stat"><b>' + cnt(dayStart - 6 * 864e5) + '</b>last 7 days</span>' +
-    '<span class="stat"><b>' + cnt(dayStart - 29 * 864e5) + '</b>last 30 days</span>' +
+    '<span class="stat"><b>+' + cntNew(dayStart) + '</b>new today</span>' +
+    '<span class="stat"><b>' + cnt(dayStart - 6 * 864e5) + '</b>done · 7d</span>' +
+    '<span class="stat"><b>+' + cntNew(dayStart - 6 * 864e5) + '</b>new · 7d</span>' +
+    '<span class="stat"><b>' + cnt(dayStart - 29 * 864e5) + '</b>done · 30d</span>' +
     (rocks.length ? '<span class="stat">★ <b>' + rocks.filter(t => t.done).length + '/' + rocks.length + '</b>rocks this week</span>' : '');
   renderMission();
 }
