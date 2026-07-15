@@ -158,6 +158,14 @@
     padding:14px 20px; color:var(--sub); font-size:13px; font-weight:500; cursor:pointer; transition:all .2s; white-space:nowrap; }
   .addcol:hover { border-color:var(--blue); color:var(--blue); background:var(--tint); }
 
+  .taskcard.compact { display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; }
+  .cck { color:#30d158; font-size:12px; flex-shrink:0; }
+  .ct { flex:1; min-width:0; font-size:13px; color:#9a9aa0; text-decoration:line-through;
+    text-decoration-color:rgba(60,60,67,.2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-.01em; }
+  .cdur { font-size:10.5px; color:#c7c7cc; flex-shrink:0; }
+  .showmore { list-style:none; text-align:center; padding:9px; font-size:12.5px; font-weight:600;
+    color:var(--blue); cursor:pointer; border-radius:10px; transition:background .18s; }
+  .showmore:hover { background:var(--tint); }
   .tfoot { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; }
   .tstamp { font-size:10.5px; color:#c7c7cc; letter-spacing:0; min-width:0; }
   .tacts { display:flex; gap:0; flex-shrink:0; }
@@ -1126,6 +1134,17 @@ function logDeleted(t) {                // abandonment churn: what gets deleted 
   store('tk_deleted', d.slice(-50));
 }
 
+let doneExpanded = false;
+function compactDoneLi(t) {             // title-only row; tap to expand into the full card
+  const li = document.createElement('li'); li.className = 'taskcard compact';
+  li.title = 'Tap to see details';
+  const ck = document.createElement('span'); ck.className = 'cck'; ck.textContent = '✓';
+  const tx = document.createElement('span'); tx.className = 'ct'; tx.textContent = t.text;
+  li.append(ck, tx);
+  if (t.timeSpent) { const d = document.createElement('span'); d.className = 'cdur'; d.textContent = fmtDurLabel(t.timeSpent); li.appendChild(d); }
+  li.onclick = () => li.replaceWith(taskLi(t));
+  return li;
+}
 function doneColId() {
   const c = cols.find(c => c.id === 'c-done' || /^(done|complete[d]?|完成)$/i.test((c.name || '').trim())) || cols[cols.length - 1];
   return c ? c.id : null;
@@ -1380,11 +1399,12 @@ function renderBoard() {
 
     const ul = document.createElement('ul'); ul.className = 'colbody';
     if (col.id === doneColId() && inCol.length) {
-      // Done column: group by completion date, newest day first — a visible progress log
+      // Done column: newest first, grouped by date; collapsed to 10 compact title-rows by default
       const sorted = [...inCol].sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
       const keyOf = t => t.doneAt ? new Date(t.doneAt).toDateString() : 'Earlier';
+      const list = doneExpanded ? sorted : sorted.slice(0, 10);
       let lastKey = null;
-      sorted.forEach(t => {
+      list.forEach(t => {
         const key = keyOf(t);
         if (key !== lastKey) {
           lastKey = key;
@@ -1392,8 +1412,14 @@ function renderBoard() {
           h.textContent = dateLabel(t.doneAt) + ' · ' + sorted.filter(x => keyOf(x) === key).length;
           ul.appendChild(h);
         }
-        ul.appendChild(taskLi(t));
+        ul.appendChild(doneExpanded ? taskLi(t) : compactDoneLi(t));
       });
+      if (sorted.length > 10 || doneExpanded) {
+        const btn = document.createElement('li'); btn.className = 'showmore';
+        btn.textContent = doneExpanded ? 'Show less ▴' : 'Show all ' + sorted.length + ' ▾';
+        btn.onclick = () => { doneExpanded = !doneExpanded; renderBoard(); };
+        ul.appendChild(btn);
+      }
     } else {
       const firstColId = (cols.find(c => c.id !== doneColId()) || {}).id;
       inCol.forEach((t, i) => {
