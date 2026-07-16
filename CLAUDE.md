@@ -27,11 +27,15 @@
 |---|---|---|
 | `APP_PASSCODE` | Vercel env | The passcode. Server-only. Change → redeploy. |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | auto-added by Vercel↔Upstash integration | KV REST endpoint (or the `UPSTASH_REDIS_REST_*` pair). |
-| `RESEND_API_KEY` | Vercel env (optional) | Operator alert emails (§16.4). Unset = alerts silently off (fail-open — alerts are observability, not a guardrail). |
+| `RESEND_API_KEY` | Vercel env (optional) | Operator alert emails (§16.4) + the daily update email. Unset = both silently off (fail-open — alerts are observability, not a guardrail). |
+| `CRON_SECRET` | Vercel env | Guards `/api/cron/daily`. Any long random string; Vercel automatically sends it as the Authorization bearer on scheduled invocations. |
 | `ALERT_EMAIL` | optional | Alert recipient. Default `raymond.zheng@gmail.com`. |
 | `ALERT_FROM` | optional | Sender. Default `BigPlan <onboarding@resend.dev>` — works without domain verification but ONLY to the Resend account owner's email; verify a domain (§16.1) to send anywhere else. |
 
 **Alerts fire on:** wrong passcode attempts (state + export), KV write failures, client-reported JS errors / unhandled rejections / API 404s & 5xx. Throttled server-side to 1 email per type per 10 min; client reports max 1/min.
+
+## Daily update cron (`/api/cron/daily`, 21:00 UTC = 7am AEST)
+Sends the daily progress email (yesterday's completions, week stats, mission time %, rocks, next milestone, aging items), **then** archive-prunes done cards older than `PRUNE_DAYS` (35 — kept >30 so monthly stats stay accurate) into `bigplan:archive` (capped 5,000; included in `/api/export`). **Invariants, pinned by launch-check:** email sends before prune; prune never runs if the send failed; failure branches call `sendAlert`. Note: the prune writes state server-side — a device that was offline with unsynced edits since before the prune will get a 409 and adopt the pruned state (same LWW behaviour as any stale push). Cadence is daily for testing; switch the `vercel.json` schedule to weekly (`0 21 * * 0`) once trusted.
 
 ## Hosting
 Vercel (region `syd1`), Git push to `main` auto-deploys. `git push` ≠ live (§2.2). Env var changes require a redeploy.

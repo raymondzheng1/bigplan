@@ -28,6 +28,7 @@ export default async function handler(req, res) {
 
   const current = parse(await kv('/get/' + encodeURIComponent('bigplan:state')));
   const previous = parse(await kv('/get/' + encodeURIComponent('bigplan:prev')));
+  const archive = parse(await kv('/get/' + encodeURIComponent('bigplan:archive'))); // pruned done cards live here forever
   const snapshots = {};
   const keys = await kv('/keys/' + encodeURIComponent('bigplan:snap:*'));
   for (const k of (keys.result || []).sort()) {
@@ -40,6 +41,6 @@ export default async function handler(req, res) {
   res.status(200).json({
     app: 'bigplan-cloud-backup',
     exported: new Date().toISOString(),
-    current, previous, snapshots
+    current, previous, snapshots, archive
   });
 }

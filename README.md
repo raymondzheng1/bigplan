@@ -26,6 +26,8 @@ Raymond's one-year mission command center (Jul 1, 2026 → Jun 30, 2027). Kanban
 
 **Optional — error alert emails (Resend):** sign up at resend.com (free) → create an API key → in Vercel add env var `RESEND_API_KEY` → redeploy. You'll then get an email on wrong passcode attempts, server/KV failures, and app errors (throttled to avoid floods). The default sender `onboarding@resend.dev` delivers only to your own Resend account email — use the same address you sign up with, or verify a domain in Resend and set `ALERT_FROM`.
 
+**Daily update email + auto-cleanup:** add a Vercel env var `CRON_SECRET` (any long random string) → redeploy. Every morning ~7am Sydney you'll get a progress email (yesterday's wins, week stats, mission %, rocks, next milestone, aging items). After each successful send, done cards older than 35 days are archived server-side (recoverable — they're in every cloud backup), keeping the board lean.
+
 Changing the passcode later: edit `APP_PASSCODE` in Vercel → redeploy. (Devices that cached the old passcode for offline unlock will re-verify next time they're online.)
 
 ## Backups (simple, layered)

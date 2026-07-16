@@ -1,7 +1,7 @@
-// api/_alert.js — operator alert emails via Resend (harness §16.4).
-// Helper only (underscore file = not a route). Fail-open: no key => silently skip.
-// Throttle: max one email per alert type per 10 minutes (KV SET NX EX), so a
-// brute-force passcode attempt can't flood the inbox.
+// api/_alert.js — email helpers via Resend (harness §16.2/§16.4).
+// sendEmail: direct send, "[BigPlan]" subject prefix + app footer (§16.2).
+// sendAlert: sendEmail + a 10-min per-type mute so error floods can't spam the inbox.
+// Fail-open philosophy: email problems are logged, never break the caller.
 
 async function allowed(type) {
   const base = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -22,21 +22,31 @@ async function allowed(type) {
   } catch { return true; }
 }
 
-export async function sendAlert(subject, text, type = 'general') {
+export async function sendEmail(subject, text) {
   const key = process.env.RESEND_API_KEY;
-  if (!key) { console.error('ALERT_SKIPPED_NO_KEY — RESEND_API_KEY not set in this deployment'); return; }
+  if (!key) { console.error('ALERT_SKIPPED_NO_KEY — RESEND_API_KEY not set in this deployment'); return false; }
   try {
-    if (!(await allowed(type))) return;
     const to = process.env.ALERT_EMAIL || 'raymond.zheng@gmail.com';
     const from = process.env.ALERT_FROM || 'BigPlan <onboarding@resend.dev>';
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'content-type': 'application/json' },
-      body: JSON.stringify({ from, to: [to], subject: '[BigPlan] ' + subject, text })
+      body: JSON.stringify({
+        from, to: [to],
+        subject: '[BigPlan] ' + subject,
+        text: text + '\n\n— Sent via BigPlan'
+      })
     });
     if (!r.ok) {
-      // Surface the reason in Vercel function logs (no secrets logged)
       console.error('ALERT_SEND_FAILED', r.status, (await r.text()).slice(0, 300));
+      return false;
     }
-  } catch (e) { console.error('ALERT_SEND_ERROR', String(e).slice(0, 200)); }
+    return true;
+  } catch (e) { console.error('ALERT_SEND_ERROR', String(e).slice(0, 200)); return false; }
+}
+
+export async function sendAlert(subject, text, type = 'general') {
+  if (!process.env.RESEND_API_KEY) { console.error('ALERT_SKIPPED_NO_KEY — RESEND_API_KEY not set in this deployment'); return; }
+  if (!(await allowed(type))) return;
+  await sendEmail(subject, text);
 }

@@ -66,6 +66,18 @@ check(apiSrc.includes('sendAlert'), 'state.js alerts on auth failure + KV failur
 check(read('api/export.js').includes('sendAlert'), 'export.js alerts on auth failure');
 check(read('api/alert.js').includes('timingSafeEqual'), 'client error endpoint is passcode-gated');
 check(html.includes('reportError'), 'client reports JS/sync/404 errors');
+
+console.log('daily update cron (harness §7/§16)');
+check(existsSync(resolve(ROOT, 'api/cron/daily.js')), 'api/cron/daily.js exists');
+const cron = read('api/cron/daily.js');
+check(cron.includes('CRON_SECRET'), 'cron endpoint is CRON_SECRET-guarded');
+const sendIdx = cron.indexOf('await sendEmail('), pruneIdx = cron.indexOf('PRUNE (archive');
+check(sendIdx > -1 && pruneIdx > sendIdx, 'invariant: email sends BEFORE prune');
+check(cron.includes('bigplan:archive'), 'prune archives (never deletes)');
+check(cron.includes('sendAlert') && cron.includes('CRON_DAILY_ERROR'), 'failure branches alert the operator (§16.4)');
+const vj = JSON.parse(read('vercel.json'));
+check(Array.isArray(vj.crons) && vj.crons.some(c => c.path === '/api/cron/daily'), 'cron scheduled in vercel.json');
+check(read('api/export.js').includes('bigplan:archive'), 'archive included in cloud backups');
 check(html.includes('/_vercel/insights/script.js'), 'Vercel Web Analytics script mounted (§8.5)');
 check(sw.includes('/_vercel/'), 'service worker never caches analytics');
 
