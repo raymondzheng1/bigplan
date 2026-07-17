@@ -605,7 +605,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const META_KEYS = ['tk_pass', 'tk_dirty', 'tk_updatedAt', 'tk_trust'];
+const META_KEYS = ['tk_pass', 'tk_dirty', 'tk_updatedAt', 'tk_trust', 'tk_worklive', 'tk_lastSyncAt', 'tk_tomb'];
 const store = (k, v) => {
   try { localStorage.setItem(k, JSON.stringify(v)); }
   catch (e) { alert('Storage is full — could not save. Try removing large file attachments or export a backup.'); return; }
@@ -726,6 +726,39 @@ function applyRemote(data) {
     localStorage.setItem('tk_tasks', JSON.stringify(t));
   } catch {}
 }
+/* task-level merge for concurrent edits on two devices:
+   base = LOCAL order; per task the newer version (touchedAt/doneAt/editedAt/createdAt) wins;
+   tasks created on the other device are added; tasks we deleted here stay deleted (tombstones). */
+function tTime(t) { return t.touchedAt || t.doneAt || t.editedAt || t.createdAt || 0; }
+function mergeRemote(remoteState) {
+  const rdata = remoteState.data || {};
+  let rT = [], lT = [];
+  try { rT = JSON.parse(rdata.tk_tasks || '[]'); } catch {}
+  try { lT = JSON.parse(localStorage.getItem('tk_tasks') || '[]'); } catch {}
+  const lastSync = load('tk_lastSyncAt', 0);
+  const tombs = load('tk_tomb', []);
+  const rById = {}; rT.forEach(t => { if (t.id) rById[t.id] = t; });
+  const lIds = new Set(lT.map(t => t.id));
+  const merged = lT.map(lt => {
+    const rt = rById[lt.id];
+    return (rt && tTime(rt) > tTime(lt)) ? rt : lt;
+  });
+  rT.forEach(rt => {
+    if (lIds.has(rt.id)) return;
+    if (tombs.some(x => x.id === rt.id && x.ts > lastSync)) return;   // deleted on this device
+    merged.push(rt);                                                   // created on the other device
+  });
+  localStorage.setItem('tk_tasks', JSON.stringify(merged));
+  // non-task keys keep the LOCAL (dirty) version; the merged blob pushes next
+}
+function tombstone(t) {
+  try {
+    const d = load('tk_tomb', []);
+    d.push({ id: t.id, ts: Date.now() });
+    localStorage.setItem('tk_tomb', JSON.stringify(d.slice(-200)));
+  } catch {}
+}
+
 function setSyncUI(state) {
   const el = $('syncdot'); if (!el) return;
   const m = { synced:['#30d158','Synced to cloud'], offline:['#ff9f0a','Offline — will sync when online'],
@@ -763,19 +796,21 @@ async function syncPush() {
   setSyncUI('syncing');
   try {
     const r = await api('PUT', { updatedAt: load('tk_updatedAt', 0), data: collectState() });
-    if (r.status === 409) { // another device saved something newer — adopt it
+    if (r.status === 409) { // another device saved concurrently → MERGE, never discard either side
       const j = await r.json();
       if (j && j.state) {
-        applyRemote(j.state.data);
-        localStorage.setItem('tk_updatedAt', JSON.stringify(j.state.updatedAt));
-        localStorage.setItem('tk_dirty', 'false');
-        toast('Updated with a newer copy from the cloud');
-        setTimeout(() => location.reload(), 700);
+        mergeRemote(j.state);
+        localStorage.setItem('tk_updatedAt', JSON.stringify(Date.now()));
+        localStorage.setItem('tk_dirty', 'true');
+        refreshUI();
+        toast('Merged changes from your other device');
+        setTimeout(syncPush, 900);      // push the merged result
       }
       return;
     }
     if (!r.ok) throw 0;
     localStorage.setItem('tk_dirty', 'false');
+    localStorage.setItem('tk_lastSyncAt', JSON.stringify(Date.now()));
     setSyncUI('synced');
   } catch { setSyncUI(navigator.onLine ? 'error' : 'offline'); }
 }
@@ -793,10 +828,19 @@ async function syncPull() {
     const remote = j && j.state;
     const localAt = load('tk_updatedAt', 0);
     if (remote && remote.updatedAt > localAt) {
-      applyRemote(remote.data);
-      localStorage.setItem('tk_updatedAt', JSON.stringify(remote.updatedAt));
-      localStorage.setItem('tk_dirty', 'false');
-      setSyncUI('synced');
+      if (localStorage.getItem('tk_dirty') === 'true') {
+        mergeRemote(remote);            // both sides changed → task-level merge, then push ours
+        localStorage.setItem('tk_updatedAt', JSON.stringify(Date.now()));
+        refreshUI();
+        setTimeout(syncPush, 400);
+      } else {
+        applyRemote(remote.data);
+        localStorage.setItem('tk_updatedAt', JSON.stringify(remote.updatedAt));
+        localStorage.setItem('tk_dirty', 'false');
+        localStorage.setItem('tk_lastSyncAt', JSON.stringify(Date.now()));
+        refreshUI();                    // in-place — never reloads, never interrupts a running timer
+        setSyncUI('synced');
+      }
       return true;
     }
     if (localStorage.getItem('tk_dirty') === 'true') syncPush(); else setSyncUI('synced');
@@ -805,13 +849,13 @@ async function syncPull() {
 }
 addEventListener('online', () => {
   if (localStorage.getItem('tk_dirty') === 'true') syncPush();
-  else syncPull().then(ch => { if (ch) location.reload(); });
+  else syncPull();
 });
 addEventListener('offline', () => setSyncUI('offline'));
 setInterval(() => {
   if (!booted) return;
   if (localStorage.getItem('tk_dirty') === 'true') syncPush();
-  else syncPull().then(ch => { if (ch) location.reload(); });
+  else syncPull();
 }, 60000);
 
 /* ============ passcode gate ============ */
@@ -1112,13 +1156,14 @@ function initState() {
   if (di >= 0 && di !== cols.length - 1) cols.push(cols.splice(di, 1)[0]);
   habits = load('tk_habits', []);
   durs = load('tk_dur', { focus: 25, break: 5 });
-  left = durs[mode] * 60;
+  if (!ticking) left = durs[mode] * 60;  // never clobber a running focus timer on a sync refresh
 }
 
 function saveAll() { store('tk_tasks', tasks); store('tk_cols', cols); renderBoard(); }
 
 /* ---- silent signal collection (feeds Insights + the future AI review) ---- */
 const devTag = () => (matchMedia('(pointer:coarse)').matches || innerWidth < 700) ? 'mobile' : 'desktop';
+const touch = t => { t.touchedAt = Date.now(); };   // per-task change stamp — drives the sync merge
 function usageBump(kind) {              // app opens (o) + work-mode sessions (w) per day, rolling 60 days
   const u = load('tk_usage', {});
   const k = todayKey();
@@ -1173,6 +1218,7 @@ function taskLi(t) {
   const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = t.done;
   cb.onchange = () => {
     t.done = cb.checked;
+    touch(t);
     if (cb.checked) {                       // completing → stamp it and move to the Done list
       t.doneAt = Date.now();
       t.doneDevice = devTag();
@@ -1192,7 +1238,7 @@ function taskLi(t) {
   const sp = document.createElement('span'); sp.className = 't'; sp.textContent = t.text;
   if (!t.done) { sp.style.cursor = 'pointer'; sp.title = 'Tap to focus on this task and track time'; sp.onclick = () => openWork(t); }
   const del = document.createElement('button'); del.className = 'x'; del.textContent = '✕';
-  del.onclick = () => { if (!t.done) logDeleted(t); tasks.splice(tasks.indexOf(t), 1); saveAll(); };
+  del.onclick = () => { if (!t.done) logDeleted(t); tombstone(t); tasks.splice(tasks.indexOf(t), 1); saveAll(); };
   /* actions live in their own bottom row so the task text keeps full width */
   const ed = document.createElement('button'); ed.className = 'x up'; ed.textContent = '✎';
   ed.title = 'Edit task';
@@ -1235,7 +1281,7 @@ function taskLi(t) {
       c.appendChild(n);
       if (f.data) c.onclick = ev => { if (ev.target.classList.contains('x')) return; viewFile(f); };
       const rm = document.createElement('button'); rm.className = 'x'; rm.textContent = '✕';
-      rm.onclick = ev => { ev.stopPropagation(); t.files.splice(fi, 1); saveAll(); };
+      rm.onclick = ev => { ev.stopPropagation(); t.files.splice(fi, 1); touch(t); saveAll(); };
       c.appendChild(rm); chips.appendChild(c);
     });
     li.appendChild(chips);
@@ -1313,6 +1359,7 @@ function openWork(t) {
   workTask = t; workBase = t.timeSpent || 0; workStartMs = 0; workSessStart = 0;
   $('workText').textContent = t.text;
   $('workNote').textContent = t.note || '';
+  saveWorkLive();
   $('workToggle').textContent = workBase > 0 ? 'Resume' : 'Start';
   paintWork();
   $('work').classList.add('on');
@@ -1321,29 +1368,44 @@ function workToggle() {
   if (workStartMs) {                    // pause — persist what's logged
     workBase = curElapsed(); pushSession(); workStartMs = 0;
     clearInterval(workTick); workTick = null;
-    workTask.timeSpent = Math.round(workBase); saveAll();
+    workTask.timeSpent = Math.round(workBase); touch(workTask); saveAll();
     $('workToggle').textContent = 'Resume';
   } else {                              // start / resume
     workStartMs = Date.now(); workSessStart = workStartMs;
-    workTick = setInterval(paintWork, 500);
+    workTick = setInterval(() => {
+      paintWork();
+      if (Date.now() - lastLiveW > 5000) { lastLiveW = Date.now(); saveWorkLive(); }  // live-persist every 5s
+    }, 500);
     $('workToggle').textContent = 'Pause';
   }
+  saveWorkLive();
   paintWork();
 }
 function stopAndSave() {
   if (workStartMs) { workBase = curElapsed(); pushSession(); workStartMs = 0; }
   clearInterval(workTick); workTick = null;
-  if (workTask && workBase > 0) workTask.timeSpent = Math.round(workBase);
+  if (workTask && workBase > 0) { workTask.timeSpent = Math.round(workBase); touch(workTask); }
+}
+let lastLiveW = 0;
+function saveWorkLive() {               // continuously persisted live timer — survives reloads/updates
+  try {
+    if (!workTask) { localStorage.removeItem('tk_worklive'); return; }
+    localStorage.setItem('tk_worklive', JSON.stringify({
+      id: workTask.id, elapsed: Math.round(curElapsed()), running: !!workStartMs, ts: Date.now()
+    }));
+  } catch {}
 }
 function closeWork() {
   stopAndSave();
   if (workTask) saveAll();
   $('work').classList.remove('on'); workTask = null;
+  saveWorkLive();                       // clears the live-timer record
 }
 function workComplete() {
   stopAndSave();
   const t = workTask;
   $('work').classList.remove('on'); workTask = null;
+  saveWorkLive();                       // clears the live-timer record
   if (!t) return;
   t.done = true; t.doneAt = Date.now(); t.doneDevice = devTag();
   const dc = doneColId();
@@ -1490,6 +1552,7 @@ function clearCompleted() {
   const n = tasks.filter(t => t.done).length;
   if (!n) { alert('No completed tasks to clear.'); return; }
   if (!confirm(`Delete ${n} completed task${n > 1 ? 's' : ''}? This cannot be undone — they'll also disappear from progress reports.`)) return;
+  tasks.filter(t => t.done).forEach(tombstone);
   tasks = tasks.filter(t => !t.done);
   saveAll();
 }
@@ -1595,6 +1658,7 @@ function compressImage(file, maxDim = 1600, quality = 0.82) {
 }
 function attachFiles(task, fileList) {
   const files = Array.from(fileList || []); if (!files.length) return;
+  touch(task);
   let pending = files.length;
   const doneOne = () => { if (--pending === 0) saveAll(); };
   files.forEach(f => {
@@ -2079,12 +2143,13 @@ function saveEdit() {
 
 function toggleRock(t) {
   const wk = weekKey();
-  if (t.rockWeek === wk) { delete t.rockWeek; saveAll(); return; }
+  if (t.rockWeek === wk) { delete t.rockWeek; touch(t); saveAll(); return; }
   if (tasks.filter(x => x.rockWeek === wk).length >= 3) {
     alert('Three rocks max per week — that’s the point. Unstar one first.');
     return;
   }
   t.rockWeek = wk;
+  touch(t);
   saveAll(); toast('Rock set for this week 🪨');
 }
 
@@ -2222,18 +2287,44 @@ $('notes').addEventListener('input', () => {
 
 /* ============ boot (runs after unlock) ============ */
 let booted = false;
-function boot() {
-  if (booted) return; booted = true;
+function initAndRender() {
   initState();          // read state from localStorage only AFTER the cloud pull
-  usageBump('o');       // daily open count (engagement rhythm for insights)
   renderBoard();
   renderHabits();
   $('focusMin').value = durs.focus; $('breakMin').value = durs.break;
+  paint();
+  if (document.activeElement !== $('notes')) $('notes').value = load('tk_notes', '');
+}
+function refreshUI() {  // apply freshly-synced data IN PLACE — never reload mid-session
+  if (!booted) return;
+  const wtId = workTask && workTask.id, edId = editTask && editTask.id;
+  initAndRender();
+  if (wtId) {           // re-bind the live timer's task to the fresh array
+    const f = tasks.find(x => x.id === wtId);
+    if (f) workTask = f;
+    else if (workTask) tasks.push(workTask);  // deleted remotely while being timed → keep it alive here
+  }
+  if (edId) { const f = tasks.find(x => x.id === edId); if (f) editTask = f; }
+  renderMission();
+}
+function recoverWorkLive() {            // a reload/app-update can no longer lose tracked time
+  const live = load('tk_worklive', null);
+  if (!live || !live.id) return;
+  localStorage.removeItem('tk_worklive');
+  const t = tasks.find(x => x.id === live.id);
+  if (!t || !live.elapsed) return;
+  if (live.elapsed > (t.timeSpent || 0)) { t.timeSpent = live.elapsed; touch(t); saveAll(); }
+  toast('Recovered ' + fmtDurLabel(live.elapsed) + ' tracked on “' + t.text.slice(0, 32) + (t.text.length > 32 ? '…' : '') + '”');
+  openWork(t);
+}
+function boot() {
+  if (booted) return; booted = true;
+  usageBump('o');       // daily open count (engagement rhythm for insights)
+  initAndRender();
   $('focusMin').addEventListener('change', durChanged);
   $('breakMin').addEventListener('change', durChanged);
   $('ring').style.strokeDasharray = RING_C;
-  paint();
-  $('notes').value = load('tk_notes', '');
+  recoverWorkLive();
   if (localStorage.getItem('tk_dirty') === 'true') syncPush();
 }
 
