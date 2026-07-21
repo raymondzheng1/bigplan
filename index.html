@@ -145,7 +145,8 @@
     transform:rotate(-45deg) scale(0); transition:transform .25s var(--spring); margin-top:-2px; }
   .ck input:checked + .box { background:var(--grad); border-color:transparent; }
   .ck input:checked + .box::after { transform:rotate(-45deg) scale(1); }
-  .taskcard .t { flex:1; font-size:13.5px; line-height:1.45; letter-spacing:-.01em; word-break:break-word; }
+  .taskcard .t { flex:1; font-size:13.5px; line-height:1.45; letter-spacing:-.01em; word-break:break-word;
+    display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
   .taskcard.done .t { color:#c7c7cc; text-decoration:line-through; text-decoration-color:rgba(60,60,67,.25); }
   .x { background:none; border:none; color:#c7c7cc; cursor:pointer; font-size:13px; padding:2px 5px;
     border-radius:7px; opacity:0; transition:all .18s; flex-shrink:0; }
@@ -229,7 +230,11 @@
   .overlay.on { display:flex; animation:fade .2s ease; }
   @keyframes fade { from { opacity:0; } to { opacity:1; } }
   .dialog { background:#fff; border-radius:22px; padding:28px; width:min(420px, calc(100vw - 48px));
+    max-height:min(86vh, calc(100vh - 48px)); overflow-y:auto; -webkit-overflow-scrolling:touch;
     box-shadow:0 24px 80px rgba(0,0,0,.3); animation:rise .3s var(--spring); }
+  .overlay { padding:24px 0; }
+  #workText { overflow-wrap:anywhere; max-height:24vh; overflow-y:auto; }
+  #workText.longtext { font-size:14.5px; font-weight:500; line-height:1.5; text-align:left; }
   .dialog h3 { font-size:19px; font-weight:700; letter-spacing:-.02em; margin-bottom:8px; }
   .dialog p { color:var(--sub); font-size:14px; margin-bottom:6px; }
   .dialog .q { background:rgba(120,120,128,.08); border-radius:12px; padding:10px 14px; font-size:14px;
@@ -1358,6 +1363,7 @@ function openWork(t) {
   usageBump('w');
   workTask = t; workBase = t.timeSpent || 0; workStartMs = 0; workSessStart = 0;
   $('workText').textContent = t.text;
+  $('workText').classList.toggle('longtext', t.text.length > 90);
   $('workNote').textContent = t.note || '';
   saveWorkLive();
   $('workToggle').textContent = workBase > 0 ? 'Resume' : 'Start';
