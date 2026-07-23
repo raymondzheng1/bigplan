@@ -118,6 +118,9 @@
   .addrow button.filebtn:hover { background:rgba(120,120,128,.2); }
   .addrow button.filebtn.rec { background:rgba(255,59,48,.18); box-shadow:0 0 0 3px rgba(255,59,48,.25);
     animation:recpulse .9s ease-in-out infinite alternate; }
+  #newcol { border:none; background:rgba(120,120,128,.10); border-radius:11px; padding:0 10px;
+    font-size:13px; font-weight:500; color:var(--ink); max-width:140px; cursor:pointer; }
+  #newcol:focus { outline:none; background:#fff; box-shadow:0 0 0 3px var(--tint); }
   @keyframes recpulse { from { box-shadow:0 0 0 2px rgba(255,59,48,.2); } to { box-shadow:0 0 0 5px rgba(255,59,48,.35); } }
 
   /* kanban board */
@@ -149,7 +152,7 @@
     display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; }
   .taskcard.done .t { color:#c7c7cc; text-decoration:line-through; text-decoration-color:rgba(60,60,67,.25); }
   .x { background:none; border:none; color:#c7c7cc; cursor:pointer; font-size:13px; padding:2px 5px;
-    border-radius:7px; opacity:0; transition:all .18s; flex-shrink:0; }
+    border-radius:7px; opacity:.5; transition:all .18s; flex-shrink:0; }
   .taskcard:hover .x, .chip .x { opacity:1; }
   .x:hover { color:#ff3b30; background:rgba(255,59,48,.08); }
   .x.up:hover { color:var(--blue); background:var(--tint); }
@@ -315,11 +318,12 @@
     .seg { margin-bottom:16px; }
     .seg button { padding:10px 0; }
     .card { padding:16px; border-radius:20px; }
-    .addrow { gap:7px; }
+    .addrow { gap:7px; flex-wrap:wrap; }
     .addrow input, .durs input { font-size:16px; }  /* prevents iOS focus zoom */
-    .addrow input { padding:13px 12px; }
+    .addrow input { flex:1 1 100%; padding:13px 12px; }  /* input gets its own line on phones */
     .addrow button { padding:0 14px; min-height:46px; flex-shrink:0; }
     .addrow button.filebtn { padding:0 12px; }
+    #newcol { flex:1; min-height:46px; max-width:none; font-size:14px; }
     .board { scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
     .col { flex:0 0 80vw; min-width:0; scroll-snap-align:start; }
     .taskcard { padding:13px 14px; }
@@ -404,6 +408,7 @@
   <div class="card pane on" id="p-tasks">
     <div class="addrow">
       <input id="ti" placeholder="Add a task…">
+      <select id="newcol" title="Which list new tasks go into"></select>
       <button class="filebtn" id="micbtn" onclick="toggleVoice()" title="Speak your task">🎤</button>
       <button class="filebtn" onclick="$('newtaskfile').click()" title="New task from a file or photo">📎</button>
       <button onclick="addTask()">Add</button>
@@ -1524,6 +1529,16 @@ function renderBoard() {
     board.appendChild(cEl);
   });
 
+  // creation-bar queue picker: every list except Done, keeping the current choice
+  const sel = $('newcol');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  cols.filter(c => c.id !== doneColId()).forEach(c => {
+    const o = document.createElement('option'); o.value = c.id; o.textContent = c.name;
+    sel.appendChild(o);
+  });
+  if (prev && cols.some(c => c.id === prev && c.id !== doneColId())) sel.value = prev;
+
   const addCol = document.createElement('button'); addCol.className = 'addcol'; addCol.textContent = '+ Add list';
   addCol.onclick = () => {
     const v = prompt('New list name:');
@@ -1755,7 +1770,7 @@ updateMicLabel();
 $('newtaskfile').addEventListener('change', e => {
   const files = Array.from(e.target.files || []); if (!files.length) return;
   const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''),
-    done:false, files:[], col: cols[0].id, createdAt: Date.now() };
+    done:false, files:[], col: newTaskCol(), createdAt: Date.now() };
   tasks.push(t);
   attachFiles(t, e.target.files);
   toast('Task created from file');
@@ -1777,7 +1792,7 @@ dz.addEventListener('drop', e => {
   e.preventDefault(); dz.classList.remove('dragover');
   if (!isFileDrag(e)) return;
   const files = Array.from(e.dataTransfer.files); if (!files.length) return;
-  const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: cols[0].id, createdAt: Date.now() };
+  const t = { id: uid(), text: files[0].name + (files.length > 1 ? ` (+${files.length - 1} more)` : ''), done:false, files:[], col: newTaskCol(), createdAt: Date.now() };
   tasks.push(t); attachFiles(t, e.dataTransfer.files);
 });
 window.addEventListener('dragover', e => e.preventDefault());
@@ -1898,8 +1913,12 @@ function addTask() {
   }
   createTask(v);
 }
+function newTaskCol() {                 // the queue chosen in the creation bar (fallback: first list)
+  const v = $('newcol').value;
+  return (v && cols.some(c => c.id === v)) ? v : cols[0].id;
+}
 function createTask(v) {
-  tasks.push({ id: uid(), text: v, done: false, files: [], col: cols[0].id, createdAt: Date.now(),
+  tasks.push({ id: uid(), text: v, done: false, files: [], col: newTaskCol(), createdAt: Date.now(),
     src: voiceUsed ? 'voice' : 'typed', createdDevice: devTag() });
   voiceUsed = false;
   $('ti').value = '';
