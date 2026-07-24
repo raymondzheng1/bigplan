@@ -177,6 +177,32 @@
     font-size:12.5px; font-weight:600; color:var(--sub); cursor:pointer; transition:all .18s; }
   .tbchip.on { background:var(--blue); color:#fff; }
   @keyframes pulse { from { opacity:1; } to { opacity:.55; } }
+
+  /* ===== delight layer ===== */
+  .m-fill { position:relative; overflow:hidden; }
+  .m-fill::after { content:''; position:absolute; inset:0; transform:translateX(-100%);
+    background:linear-gradient(100deg, transparent 30%, rgba(255,255,255,.45) 50%, transparent 70%);
+    animation:shine 3.4s ease-in-out infinite; }
+  @keyframes shine { 55% { transform:translateX(100%); } 100% { transform:translateX(100%); } }
+  .taskcard.popdone { animation:popdone .55s var(--spring); }
+  @keyframes popdone { 30% { transform:scale(1.05); box-shadow:0 10px 32px rgba(48,209,88,.4); } }
+  .taskcard.newcard { animation:cardin .5s var(--spring); }
+  @keyframes cardin { from { opacity:0; transform:translateY(-10px) scale(.95); } }
+  .flame { display:inline-block; animation:flame 1.5s ease-in-out infinite; transform-origin:50% 88%; }
+  @keyframes flame { 50% { transform:scale(1.25) rotate(-4deg); } }
+  #workClock.running { animation:breathe 3.6s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity:.72; } }
+  .stat b.bump { display:inline-block; animation:bump .45s var(--spring); }
+  @keyframes bump { 40% { transform:scale(1.4); color:var(--blue); } }
+  .emptymsg { list-style:none; text-align:center; color:var(--faint); font-size:12.5px; padding:16px 8px; letter-spacing:-.01em; }
+  #splash { position:fixed; inset:0; z-index:85; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; background:linear-gradient(135deg,#0b0b0f,#1c1430 60%,#221636); color:#fff;
+    opacity:0; pointer-events:none; transition:opacity .7s ease; }
+  #splash.on { opacity:1; }
+  #splash .d1 { font-size:13px; letter-spacing:.24em; text-transform:uppercase; color:rgba(255,255,255,.5); }
+  #splash .d2 { font-size:72px; font-weight:800; letter-spacing:-.03em; margin:6px 0;
+    background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #splash .d3 { font-size:14px; color:rgba(255,255,255,.65); max-width:72vw; text-align:center; font-style:italic; }
   .tacts { display:flex; gap:0; flex-shrink:0; }
   .tnote { font-size:12px; color:var(--sub); margin-top:6px; white-space:pre-wrap; word-break:break-word;
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
@@ -363,6 +389,7 @@
   </div>
 </div>
 
+<div id="splash"><div class="d1">One-Year Mission</div><div class="d2" id="spDay"></div><div class="d3" id="spQuote"></div></div>
 <canvas id="fx"></canvas>
 <div id="toast"></div>
 
@@ -955,6 +982,28 @@ function tickFx() {
   if (parts.length) requestAnimationFrame(tickFx);
   else { fxRun = false; fctx.clearRect(0, 0, fx.width, fx.height); }
 }
+function confettiAt(x, y, n = 45) {     // radial burst from a point (e.g. the checkbox you just ticked)
+  const colors = ['#0a84ff', '#bf5af2', '#ff9f0a', '#30d158', '#ff375f', '#ffd60a'];
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = 2.5 + Math.random() * 5;
+    parts.push({ x, y, w: 5 + Math.random() * 5, h: 6 + Math.random() * 6, c: colors[i % colors.length],
+      vx: Math.cos(a) * v, vy: Math.sin(a) * v - 3, r: Math.random() * Math.PI, vr: -.2 + Math.random() * .4, o: 1 });
+  }
+  if (!fxRun) { fxRun = true; requestAnimationFrame(tickFx); }
+}
+function chime() {                      // soft two-note completion chime (quiet, tasteful)
+  try {
+    const c = new (window.AudioContext || window.webkitAudioContext)();
+    [[660, 0], [880, .09]].forEach(([f, d]) => {
+      const o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination); o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(.06, c.currentTime + d);
+      g.gain.exponentialRampToValueAtTime(.001, c.currentTime + d + .18);
+      o.start(c.currentTime + d); o.stop(c.currentTime + d + .2);
+    });
+    setTimeout(() => { try { c.close(); } catch {} }, 700);
+  } catch {}
+}
 let toastT;
 function toast(msg) {
   $('toast').textContent = msg; $('toast').classList.add('on');
@@ -1038,7 +1087,7 @@ const TASK_MILESTONES = {
 function bumpDone() {
   const n = load('tk_donecount', 0) + 1; store('tk_donecount', n);
   if (TASK_MILESTONES[n]) celebrate('🏅', 'Achievement unlocked', TASK_MILESTONES[n]);
-  else { toast(pick(['Nice. ✅', 'Done and dusted.', 'One step closer to the big thing.', 'Keep going, Raymond.', 'That’s how it’s done.'])); confetti(70); }
+  else toast(pick(['Nice. ✅', 'Done and dusted.', 'One step closer to the big thing.', 'Keep going, Raymond.', 'That’s how it’s done.']));
 }
 
 /* greeting */
@@ -1207,11 +1256,12 @@ function dateLabel(ms) {
   return d.toLocaleDateString(undefined, { weekday:'short', day:'numeric', month:'short' });
 }
 
-let draggedId = null;
+let draggedId = null, justAddedId = null;
 
 function taskLi(t) {
   const li = document.createElement('li');
   li.className = 'taskcard' + (t.done ? ' done' : '');
+  if (t.id === justAddedId) { li.classList.add('newcard'); justAddedId = null; }
   li.dataset.tid = t.id;
   li.draggable = true;
   touchDragInit(li, t);
@@ -1230,6 +1280,11 @@ function taskLi(t) {
       if (dcc && t.col !== dcc) { t.prevCol = t.col; t.col = dcc; }
       bumpDone();
       if (t.repeat) respawnRepeat(t);
+      li.classList.add('popdone');
+      const cbr = cb.getBoundingClientRect();
+      confettiAt(cbr.left + 9, cbr.top + 9, li.classList.contains('next-up') ? 95 : 45);
+      chime();
+      if (li.classList.contains('next-up')) toast('🎯 Frontline cleared — the next one is already glowing');
     } else {                                // un-completing → back to where it came from
       delete t.doneAt;
       if (t.prevCol && cols.some(c => c.id === t.prevCol)) t.col = t.prevCol;
@@ -1294,10 +1349,11 @@ function taskLi(t) {
 
   const tfoot = document.createElement('div'); tfoot.className = 'tfoot';
   const ts = document.createElement('span'); ts.className = 'tstamp';
-  ts.textContent = 'Added ' + fmtDate(t.createdAt)
+  const stk = t.done ? (t.streakAtDone || 0) : liveStreak(t);   // (generated text only — safe as HTML)
+  ts.innerHTML = 'Added ' + fmtDate(t.createdAt)
     + (t.done && t.doneAt ? '  ·  ✓ Done ' + fmtDate(t.doneAt) : '')
     + (t.timeSpent ? '  ·  ⏱ ' + fmtDurLabel(t.timeSpent) : '')
-    + (t.repeat ? '  ·  🔁' + (t.done ? (t.streakAtDone ? ' 🔥' + t.streakAtDone : '') : (liveStreak(t) ? ' 🔥' + liveStreak(t) : '')) : '');
+    + (t.repeat ? '  ·  🔁' + (stk ? ' <span class="flame">🔥</span>' + stk : '') : '');
   tfoot.append(ts, acts);
   li.appendChild(tfoot);
 
@@ -1406,11 +1462,14 @@ function workToggle() {
     workBase = curElapsed(); pushSession(); workStartMs = 0;
     clearInterval(workTick); workTick = null;
     workTask.timeSpent = Math.round(workBase); touch(workTask); saveAll();
+    $('workClock').classList.remove('running');
     $('workToggle').textContent = 'Resume';
   } else {                              // start / resume
     workStartMs = Date.now(); workSessStart = workStartMs;
+    $('workClock').classList.add('running');
     workTick = setInterval(() => {
       paintWork();
+      focusMsg();
       if (Date.now() - lastLiveW > 5000) { lastLiveW = Date.now(); saveWorkLive(); }  // live-persist every 5s
     }, 500);
     $('workToggle').textContent = 'Pause';
@@ -1422,6 +1481,24 @@ function stopAndSave() {
   if (workStartMs) { workBase = curElapsed(); pushSession(); workStartMs = 0; }
   clearInterval(workTick); workTick = null;
   if (workTask && workBase > 0) { workTask.timeSpent = Math.round(workBase); touch(workTask); }
+}
+/* encouragement that deepens with the session */
+const FOCUS_MSGS = [
+  [1, 'Settling in…'],
+  [5, '5 minutes — the hardest part is behind you'],
+  [10, '10 minutes deep. Momentum is real now'],
+  [25, '25m — a full pomodoro. Strong.'],
+  [45, '45 minutes of deep work — rare air'],
+  [60, 'One hour. This is how big things get built'],
+  [90, '90 minutes — legendary block. A break is earned'],
+  [120, 'Two hours deep. Remember to stand up 🙂']
+];
+function focusMsg() {
+  if (!workStartMs) return;
+  const mins = (curElapsed() - workOpenBase) / 60;
+  let msg = '';
+  FOCUS_MSGS.forEach(([m, s]) => { if (mins >= m) msg = s; });
+  if (msg) $('workPrev').textContent = msg;
 }
 let lastLiveW = 0;
 function saveWorkLive() {               // continuously persisted live timer — survives reloads/updates
@@ -1435,6 +1512,7 @@ function saveWorkLive() {               // continuously persisted live timer —
 function closeWork() {
   stopAlarm();
   stopAndSave();
+  $('workClock').classList.remove('running');
   if (workTask) saveAll();
   $('work').classList.remove('on'); workTask = null;
   saveWorkLive();                       // clears the live-timer record
@@ -1442,6 +1520,8 @@ function closeWork() {
 function workComplete() {
   stopAlarm();
   stopAndSave();
+  $('workClock').classList.remove('running');
+  confetti(130); chime();
   const t = workTask;
   $('work').classList.remove('on'); workTask = null;
   saveWorkLive();                       // clears the live-timer record
@@ -1534,6 +1614,11 @@ function renderBoard() {
         }
         ul.appendChild(li);
       });
+      if (!inCol.length) {
+        const e = document.createElement('li'); e.className = 'emptymsg';
+        e.textContent = col.id === firstColId ? 'Clear runway ✨ add the next move above' : 'Empty — drag something here';
+        ul.appendChild(e);
+      }
     }
 
     cEl.addEventListener('dragover', e => {
@@ -1596,6 +1681,11 @@ function renderBoard() {
     '<span class="stat"><b>+' + cntNew(dayStart - 6 * 864e5) + '</b>new · 7d</span>' +
     '<span class="stat"><b>' + cnt(dayStart - 29 * 864e5) + '</b>done · 30d</span>' +
     (rocks.length ? '<span class="stat">★ <b>' + rocks.filter(t => t.done).length + '/' + rocks.length + '</b>rocks this week</span>' : '');
+  // bump-animate any counter that just changed
+  const vals = [cnt(dayStart), cntNew(dayStart), cnt(dayStart - 6 * 864e5), cntNew(dayStart - 6 * 864e5), cnt(dayStart - 29 * 864e5)];
+  const bs = $('stats').querySelectorAll('.stat b');
+  (window._psv || []).forEach((v, i) => { if (bs[i] && vals[i] !== v) bs[i].classList.add('bump'); });
+  window._psv = vals;
   renderMission();
 }
 
@@ -1954,7 +2044,9 @@ function newTaskCol() {                 // the queue chosen in the creation bar 
   return (v && cols.some(c => c.id === v)) ? v : cols[0].id;
 }
 function createTask(v) {
-  tasks.push({ id: uid(), text: v, done: false, files: [], col: newTaskCol(), createdAt: Date.now(),
+  const id = uid();
+  justAddedId = id;
+  tasks.push({ id, text: v, done: false, files: [], col: newTaskCol(), createdAt: Date.now(),
     src: voiceUsed ? 'voice' : 'typed', createdDevice: devTag() });
   voiceUsed = false;
   $('ti').value = '';
@@ -2434,7 +2526,28 @@ function boot() {
   usageBump('o');       // daily open count (engagement rhythm for insights)
   initAndRender();
   recoverWorkLive();
+  dailyMoment();
   if (localStorage.getItem('tk_dirty') === 'true') syncPush();
+}
+function dailyMoment() {                // first open of the day → Day-N splash; Mondays → last-week recap
+  const u = load('tk_usage', {})[todayKey()];
+  if (!u || u.o !== 1) return;
+  $('spDay').textContent = 'Day ' + missionDayN;
+  $('spQuote').textContent = $('quote').textContent || '';
+  const s = $('splash');
+  s.classList.add('on');
+  setTimeout(() => s.classList.remove('on'), 2400);
+  if (new Date().getDay() === 1) {
+    const seen = load('tk_mil', {});
+    if (!seen['recap' + weekKey()]) {
+      seen['recap' + weekKey()] = true; store('tk_mil', seen);
+      const dn = tasks.filter(t => t.done && t.doneAt >= Date.now() - 7 * 864e5);
+      const tm = dn.reduce((s2, t) => s2 + (t.timeSpent || 0), 0);
+      if (dn.length) setTimeout(() => celebrate('🏁', 'New week, Raymond',
+        'Last week: ' + dn.length + ' shipped' + (tm ? ' · ' + fmtDurLabel(tm) + ' tracked' : '') +
+        '. Pick your 3 rocks and go again.'), 2700);
+    }
+  }
 }
 
 /* ============ PWA: offline service worker ============ */
