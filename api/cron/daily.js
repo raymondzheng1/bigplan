@@ -82,6 +82,25 @@ export default async function handler(req, res) {
     L.push('THE WEEK SO FAR');
     L.push('  Done: ' + done7.length + '   New: ' + new7.length + '   Time tracked: ' + (time7 ? dur(time7) : '—'));
     L.push('  Mission time: ' + (align !== null ? align + '%' : '—') + '   Rocks: ' + (rocks.length ? rocks.filter(t => t.done).length + '/' + rocks.length + ' done' : 'none set'));
+    const qg = {};
+    done7.forEach(t => { const q = t.queueName || 'To Do'; (qg[q] = qg[q] || [0, 0]); qg[q][0]++; qg[q][1] += t.timeSpent || 0; });
+    if (Object.keys(qg).length > 1) {
+      L.push('');
+      L.push('BY QUEUE (7d)');
+      Object.entries(qg).sort((a, b) => b[1][0] - a[1][0])
+        .forEach(([q, [n, s]]) => L.push('  ' + q + ': ' + n + ' done' + (s ? ' · ' + dur(s) : '')));
+    }
+    const rituals = tasks.filter(t => !t.done && t.repeat);
+    const ritY = doneY.filter(t => t.repeat);
+    if (rituals.length || ritY.length) {
+      L.push('');
+      L.push('RITUALS');
+      ritY.forEach(t => L.push('  ✓ ' + t.text.slice(0, 50) + (t.streakAtDone ? '  🔥' + t.streakAtDone : '')));
+      rituals.forEach(t => {
+        if (!ritY.some(d => d.text === t.text))
+          L.push('  ○ ' + t.text.slice(0, 50) + (t.streak ? '  (🔥' + t.streak + ' at risk — do it today)' : ''));
+      });
+    }
     L.push('');
     L.push('NEXT MILESTONE');
     L.push('  ' + msLine);

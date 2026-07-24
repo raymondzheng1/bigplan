@@ -92,7 +92,7 @@
 
   /* segmented control */
   .seg { position:relative; display:flex; background:rgba(120,120,128,.12); border-radius:12px; padding:2px; margin-bottom:24px; }
-  .seg .thumb { position:absolute; top:2px; left:2px; height:calc(100% - 4px); width:calc(20% - 2px);
+  .seg .thumb { position:absolute; top:2px; left:2px; height:calc(100% - 4px); width:calc(33.333% - 2px);
     background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.08);
     transition:transform .35s var(--spring); }
   .seg button { position:relative; z-index:1; flex:1; border:none; background:none; padding:9px 0;
@@ -172,6 +172,11 @@
   .showmore:hover { background:var(--tint); }
   .tfoot { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; }
   .tstamp { font-size:10.5px; color:#c7c7cc; letter-spacing:0; min-width:0; }
+  .tbchips { display:flex; gap:6px; justify-content:center; margin-bottom:12px; flex-wrap:wrap; }
+  .tbchip { border:none; background:rgba(120,120,128,.12); border-radius:99px; padding:6px 13px;
+    font-size:12.5px; font-weight:600; color:var(--sub); cursor:pointer; transition:all .18s; }
+  .tbchip.on { background:var(--blue); color:#fff; }
+  @keyframes pulse { from { opacity:1; } to { opacity:.55; } }
   .tacts { display:flex; gap:0; flex-shrink:0; }
   .tnote { font-size:12px; color:var(--sub); margin-top:6px; white-space:pre-wrap; word-break:break-word;
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
@@ -399,8 +404,6 @@
   <div class="seg" id="seg">
     <div class="thumb" id="thumb"></div>
     <button data-p="tasks" class="on">Tasks</button>
-    <button data-p="habits">Habits</button>
-    <button data-p="timer">Focus</button>
     <button data-p="insights">Insights</button>
     <button data-p="notes">Notes</button>
   </div>
@@ -423,44 +426,6 @@
         <button class="clearbtn" onclick="openReport()">Report</button>
         <button class="clearbtn" onclick="clearCompleted()">Clear Completed</button>
       </span>
-    </div>
-  </div>
-
-  <div class="card pane" id="p-habits">
-    <div class="addrow"><input id="hi" placeholder="Add a habit…"><button onclick="addHabit()">Add</button></div>
-    <table class="hab" id="ht" style="width:100%;border-collapse:collapse"></table>
-    <div class="hint" style="margin-top:14px">Tap a circle to mark the day done. Streaks count consecutive days.</div>
-  </div>
-
-  <div class="card pane" id="p-timer">
-    <div class="timer" style="text-align:center;padding:10px 0 4px">
-      <div class="ringwrap" style="position:relative;width:280px;height:280px;margin:0 auto 4px">
-        <svg width="280" height="280" viewBox="0 0 280 280" style="transform:rotate(-90deg);display:block">
-          <defs>
-            <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#0a84ff"/>
-              <stop offset="100%" stop-color="#bf5af2"/>
-            </linearGradient>
-          </defs>
-          <circle cx="140" cy="140" r="128" style="fill:none;stroke:rgba(120,120,128,.14);stroke-width:5"/>
-          <circle id="ring" cx="140" cy="140" r="128" style="fill:none;stroke:url(#rg);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .6s linear"/>
-        </svg>
-        <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center">
-          <div id="clock" style="font-size:72px;font-weight:200;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1">25:00</div>
-          <div id="mode" style="color:var(--sub);font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin-top:10px;font-weight:600">Focus</div>
-        </div>
-      </div>
-      <div class="trow" style="display:flex;gap:10px;justify-content:center;margin-top:22px;flex-wrap:wrap">
-        <button class="tbtn primary" id="startbtn" onclick="toggleTimer()">Start</button>
-        <button class="tbtn" onclick="resetTimer()">Reset</button>
-        <button class="tbtn" onclick="switchMode()">Switch</button>
-        <button class="tbtn" id="stopalarm" onclick="stopAlarm()" style="display:none;background:#ff3b30;color:#fff;animation:pulse .8s infinite alternate">Stop Alarm</button>
-      </div>
-      <div class="durs" style="display:flex;gap:26px;justify-content:center;margin-top:24px;color:var(--sub);font-size:13.5px;align-items:center;flex-wrap:wrap">
-        <label>Focus <input type="number" id="focusMin" min="1" max="180"> min</label>
-        <label>Break <input type="number" id="breakMin" min="1" max="60"> min</label>
-      </div>
-      <div id="sessions" style="margin-top:18px;color:var(--sub);font-size:13.5px"></div>
     </div>
   </div>
 
@@ -541,6 +506,11 @@
     <div id="workNote" class="hint" style="white-space:pre-wrap; max-height:90px; overflow:auto; margin-bottom:4px"></div>
     <div id="workPrev" class="hint" style="min-height:18px"></div>
     <div id="workClock" style="font-size:58px; font-weight:200; letter-spacing:-.02em; font-variant-numeric:tabular-nums; margin:10px 0 4px">00:00</div>
+    <div id="workBarWrap" style="height:5px; background:rgba(120,120,128,.12); border-radius:99px; margin:2px 24px 12px; overflow:hidden; display:none">
+      <div id="workBar" style="height:100%; width:0%; background:var(--grad); border-radius:99px; transition:width .5s linear"></div>
+    </div>
+    <div class="tbchips" id="tbchips"></div>
+    <button id="stopalarm" onclick="stopAlarm()" style="display:none; margin:2px auto 10px; border:none; background:#ff3b30; color:#fff; border-radius:980px; padding:10px 24px; font-weight:600; cursor:pointer; animation:pulse .8s infinite alternate">Stop Alarm</button>
     <div class="dlgrow">
       <button class="dlg-merge" id="workToggle" onclick="workToggle()">Start</button>
       <button class="dlg-new" onclick="workComplete()">✓ Complete</button>
@@ -569,6 +539,13 @@
     <textarea id="edit-text" rows="2" class="mfield"></textarea>
     <label class="mlab">Notes / details (optional)</label>
     <textarea id="edit-note" rows="4" class="mfield" placeholder="Context, links, sub-steps, anything future-you needs…"></textarea>
+    <label class="mlab">Repeat (ritual — respawns when completed, builds a 🔥 streak)</label>
+    <select id="edit-repeat" class="mfield" style="width:auto; padding:9px 14px">
+      <option value="">No repeat</option>
+      <option value="daily">Daily</option>
+      <option value="weekdays">Weekdays</option>
+      <option value="weekly">Weekly</option>
+    </select>
     <div class="dlgrow">
       <button class="dlg-merge" onclick="saveEdit()">Save</button>
       <button class="dlg-cancel" onclick="$('editdlg').classList.remove('on')">Cancel</button>
@@ -1157,6 +1134,10 @@ function initState() {
     if (!t.id) t.id = uid();
     if (!t.createdAt) t.createdAt = migBase + i;   // preserve existing relative order
     if (!t.col || !cols.some(c => c.id === t.col)) t.col = t.done ? (cols[cols.length-1] || cols[0]).id : cols[0].id;
+    if (t.done && !t.queueName) {           // backfill queue context for older completions
+      const pc = cols.find(c => c.id === t.prevCol);
+      t.queueName = pc ? pc.name : 'To Do';
+    }
   });
   // NOTE: no sorting here — array order IS the user's chosen sequence and must survive
   // reloads and cloud sync. (A createdAt re-sort here silently destroyed drag ordering.)
@@ -1179,9 +1160,6 @@ function initState() {
   // the Done column always renders last
   const di = cols.findIndex(c => c.id === dc);
   if (di >= 0 && di !== cols.length - 1) cols.push(cols.splice(di, 1)[0]);
-  habits = load('tk_habits', []);
-  durs = load('tk_dur', { focus: 25, break: 5 });
-  if (!ticking) left = durs[mode] * 60;  // never clobber a running focus timer on a sync refresh
 }
 
 function saveAll() { store('tk_tasks', tasks); store('tk_cols', cols); renderBoard(); }
@@ -1247,9 +1225,11 @@ function taskLi(t) {
     if (cb.checked) {                       // completing → stamp it and move to the Done list
       t.doneAt = Date.now();
       t.doneDevice = devTag();
+      t.queueName = (cols.find(c => c.id === t.col) || {}).name || 'To Do';  // remember its context queue
       const dcc = doneColId();
       if (dcc && t.col !== dcc) { t.prevCol = t.col; t.col = dcc; }
       bumpDone();
+      if (t.repeat) respawnRepeat(t);
     } else {                                // un-completing → back to where it came from
       delete t.doneAt;
       if (t.prevCol && cols.some(c => c.id === t.prevCol)) t.col = t.prevCol;
@@ -1316,7 +1296,8 @@ function taskLi(t) {
   const ts = document.createElement('span'); ts.className = 'tstamp';
   ts.textContent = 'Added ' + fmtDate(t.createdAt)
     + (t.done && t.doneAt ? '  ·  ✓ Done ' + fmtDate(t.doneAt) : '')
-    + (t.timeSpent ? '  ·  ⏱ ' + fmtDurLabel(t.timeSpent) : '');
+    + (t.timeSpent ? '  ·  ⏱ ' + fmtDurLabel(t.timeSpent) : '')
+    + (t.repeat ? '  ·  🔁' + (t.done ? (t.streakAtDone ? ' 🔥' + t.streakAtDone : '') : (liveStreak(t) ? ' 🔥' + liveStreak(t) : '')) : '');
   tfoot.append(ts, acts);
   li.appendChild(tfoot);
 
@@ -1354,6 +1335,25 @@ function clearMarks() { document.querySelectorAll('.insert-above,.insert-below,.
 
 /* ---- work mode: per-card time tracking ---- */
 let workTask = null, workTick = null, workStartMs = 0, workBase = 0, workSessStart = 0;
+let workTarget = 0, workAlarmFired = false, workOpenBase = 0;   // timebox (absorbed Focus timer)
+const TB_CHOICES = [15, 25, 45, 90];
+function renderTbChips() {
+  const w = $('tbchips'); if (!w) return;
+  w.innerHTML = '';
+  TB_CHOICES.forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'tbchip' + (workTarget === m ? ' on' : '');
+    b.textContent = m + 'm';
+    b.onclick = () => { workTarget = (workTarget === m ? 0 : m); workAlarmFired = false; stopAlarm(); renderTbChips(); paintWork(); };
+    w.appendChild(b);
+  });
+  const off = document.createElement('button');
+  off.className = 'tbchip' + (!workTarget ? ' on' : '');
+  off.textContent = 'No limit';
+  off.onclick = () => { workTarget = 0; stopAlarm(); renderTbChips(); paintWork(); };
+  w.appendChild(off);
+  $('workBarWrap').style.display = workTarget ? 'block' : 'none';
+}
 function pushSession() {                // per-task work session log: [startMs, seconds]
   if (!workSessStart || !workTask) return;
   const secs = Math.round((Date.now() - workSessStart) / 1000);
@@ -1377,11 +1377,22 @@ function fmtDurLabel(s) {
 function curElapsed() { return workBase + (workStartMs ? (Date.now() - workStartMs) / 1000 : 0); }
 function paintWork() {
   $('workClock').textContent = fmtDur(curElapsed());
+  if (workTarget) {                     // timebox progress + alarm at target
+    const sess = curElapsed() - workOpenBase;
+    $('workBar').style.width = Math.min(100, sess / (workTarget * 60) * 100) + '%';
+    if (sess >= workTarget * 60 && !workAlarmFired && workStartMs) {
+      workAlarmFired = true;
+      startAlarm();
+      toast('⏰ ' + workTarget + 'm timebox reached — break or push on, your call');
+    }
+  }
   $('workPrev').textContent = (workBase > 0 && !workStartMs) ? 'Logged so far: ' + fmtDurLabel(workBase) : ' ';
 }
 function openWork(t) {
   usageBump('w');
   workTask = t; workBase = t.timeSpent || 0; workStartMs = 0; workSessStart = 0;
+  workOpenBase = workBase; workAlarmFired = false;
+  renderTbChips();
   $('workText').textContent = t.text;
   $('workText').classList.toggle('longtext', t.text.length > 90);
   $('workNote').textContent = t.note || '';
@@ -1422,21 +1433,25 @@ function saveWorkLive() {               // continuously persisted live timer —
   } catch {}
 }
 function closeWork() {
+  stopAlarm();
   stopAndSave();
   if (workTask) saveAll();
   $('work').classList.remove('on'); workTask = null;
   saveWorkLive();                       // clears the live-timer record
 }
 function workComplete() {
+  stopAlarm();
   stopAndSave();
   const t = workTask;
   $('work').classList.remove('on'); workTask = null;
   saveWorkLive();                       // clears the live-timer record
   if (!t) return;
   t.done = true; t.doneAt = Date.now(); t.doneDevice = devTag();
+  t.queueName = (cols.find(c => c.id === t.col) || {}).name || 'To Do';
   const dc = doneColId();
   if (dc && t.col !== dc) { t.prevCol = t.col; t.col = dc; }
   bumpDone();
+  if (t.repeat) respawnRepeat(t);
   saveAll();
 }
 
@@ -1630,7 +1645,6 @@ function buildReport() {
   L.push('Mission time:     ' + (al !== null ? al + '% of tracked time (7d)' : '—'));
   const wkR = weekKey(), rocks = tasks.filter(t => t.rockWeek === wkR);
   L.push('Weekly rocks:     ' + (rocks.length ? rocks.filter(t => t.done).length + '/' + rocks.length + ' done' : 'none set'));
-  L.push('Focus sessions:   ' + focus);
   L.push('Open items:       ' + open.length);
   L.push('');
   L.push('═══ COMPLETED ═══');
@@ -1646,6 +1660,13 @@ function buildReport() {
     }
     L.push('  ✓ ' + t.text + (t.timeSpent ? '  (' + fmtDurLabel(t.timeSpent) + ')' : ''));
   });
+  L.push('');
+  L.push('═══ BY QUEUE ═══');
+  const qgr = {};
+  done.forEach(t => { const q = t.queueName || 'To Do'; (qgr[q] = qgr[q] || [0, 0]); qgr[q][0]++; qgr[q][1] += t.timeSpent || 0; });
+  if (!Object.keys(qgr).length) L.push('(none in this period)');
+  Object.entries(qgr).sort((a, b) => b[1][0] - a[1][0])
+    .forEach(([q, [n, s]]) => L.push('  ' + q + ':  ' + n + ' done' + (s ? '  ·  ' + fmtDurLabel(s) : '')));
   L.push('');
   L.push('═══ OPEN ITEMS ═══');
   if (!open.length) L.push('(all clear)');
@@ -2054,6 +2075,19 @@ function renderInsights() {
       })))
       + (zeroTimeCats.length ? `<div class="hint" style="margin-top:8px">⚠ ${zeroTimeCats.map(c => c.name.toUpperCase()).join(', ')} ha${zeroTimeCats.length > 1 ? 've' : 's'} open tasks but zero tracked time — starving project${zeroTimeCats.length > 1 ? 's' : ''}?</div>` : '')
       + '<div class="hint" style="margin-top:6px">Grouped by recurring words in your task names — no tagging needed.</div>')
+    + (() => {                          // completions by context queue (nab/work/vu = your categories)
+        const qg = {};
+        done.forEach(t => { const q = t.queueName || 'To Do'; (qg[q] = qg[q] || { n: 0, s: 0 }); qg[q].n++; qg[q].s += t.timeSpent || 0; });
+        const rows = Object.entries(qg).sort((a, b) => b[1].n - a[1].n);
+        return rows.length < 2 ? '' : icard('By queue',
+          bars(rows.map(([q, v]) => ({ label: q, value: v.s || v.n * 60, disp: v.n + ' done' + (v.s ? ' · ' + fmtDurLabel(v.s) : '') })))
+          + '<div class="hint" style="margin-top:6px">Where completions came from — your queues are your contexts.</div>');
+      })()
+    + (() => {                          // rituals (repeating tasks) with live streaks
+        const rits = tasks.filter(t => !t.done && t.repeat);
+        return !rits.length ? '' : icard('Rituals',
+          rits.map(t => `<div class="irow">🔁 ${esc(t.text.slice(0, 54))} — ${liveStreak(t) ? '<b>🔥 ' + liveStreak(t) + '</b> streak' : 'streak broken — restart today'}</div>`).join(''));
+      })()
     + icard('Work depth',
       bars([
         { label: 'Deep (>1h)', value: sum(deep), disp: fmtDurLabel(sum(deep)) + ' · ' + deep.length },
@@ -2164,6 +2198,7 @@ function openEdit(t) {
   editTask = t;
   $('edit-text').value = t.text;
   $('edit-note').value = t.note || '';
+  $('edit-repeat').value = t.repeat || '';
   $('editdlg').classList.add('on');
   $('edit-text').focus();
 }
@@ -2174,11 +2209,51 @@ function saveEdit() {
   editTask.text = v;
   const note = $('edit-note').value.trim();
   if (note) editTask.note = note; else delete editTask.note;
+  const rep = $('edit-repeat').value;
+  if (rep) editTask.repeat = rep;
+  else { delete editTask.repeat; delete editTask.streak; delete editTask.lastDoneDay; }
   editTask.editedAt = Date.now();
   $('editdlg').classList.remove('on');
   editTask = null;
   saveAll();
   toast('Task updated');
+}
+
+/* rituals: repeating tasks that respawn on completion and build streaks */
+function dayGap(d1, d2) { return Math.round((new Date(d2 + 'T12:00') - new Date(d1 + 'T12:00')) / 864e5); }
+function streakContinues(repeat, lastDay, today) {
+  if (!lastDay) return false;
+  const g = dayGap(lastDay, today);
+  if (repeat === 'daily') return g === 1;
+  if (repeat === 'weekly') return g >= 1 && g <= 7;
+  if (repeat === 'weekdays') {
+    if (g === 1) return true;
+    return new Date(today + 'T12:00').getDay() === 1 && g <= 3;  // Monday after Friday
+  }
+  return false;
+}
+function liveStreak(t) {
+  if (!t.repeat || !t.streak) return 0;
+  const today = todayKey();
+  return (t.lastDoneDay === today || streakContinues(t.repeat, t.lastDoneDay, today)) ? t.streak : 0;
+}
+function respawnRepeat(t) {
+  const today = todayKey();
+  let ns;
+  if (t.lastDoneDay === today) ns = t.streak || 1;                       // second completion same day
+  else if (streakContinues(t.repeat, t.lastDoneDay, today)) ns = (t.streak || 0) + 1;
+  else ns = 1;
+  t.streakAtDone = ns;                                                    // frozen on the done card
+  const next = {
+    id: uid(), text: t.text, done: false, files: [], createdAt: Date.now(),
+    col: (t.prevCol && cols.some(c => c.id === t.prevCol)) ? t.prevCol : cols[0].id,
+    repeat: t.repeat, streak: ns, lastDoneDay: today,
+    src: 'repeat', createdDevice: devTag(), touchedAt: Date.now()
+  };
+  if (t.note) next.note = t.note;
+  tasks.push(next);
+  if (ns > 1 && ns % 7 === 0) celebrate('🔥', ns + '-day streak!', '“' + t.text.slice(0, 40) + '” — unbroken. Protect it.');
+  else toast('🔁 Logged · 🔥 streak ' + ns + ' · next one queued');
 }
 
 function toggleRock(t) {
@@ -2235,7 +2310,7 @@ function addHabit() {
   habits.push({ name: v, days: {} }); $('hi').value = '';
   store('tk_habits', habits); renderHabits();
 }
-$('hi').addEventListener('keydown', e => { if (e.key === 'Enter') addHabit(); });
+/* (Habits tab retired — rituals now live as repeating tasks; legacy functions dormant) */
 
 /* ============ focus timer ============ */
 let durs = { focus: 25, break: 5 };   // loaded in initState()
@@ -2330,9 +2405,6 @@ let booted = false;
 function initAndRender() {
   initState();          // read state from localStorage only AFTER the cloud pull
   renderBoard();
-  renderHabits();
-  $('focusMin').value = durs.focus; $('breakMin').value = durs.break;
-  paint();
   if (document.activeElement !== $('notes')) $('notes').value = load('tk_notes', '');
 }
 function refreshUI() {  // apply freshly-synced data IN PLACE — never reload mid-session
@@ -2361,9 +2433,6 @@ function boot() {
   if (booted) return; booted = true;
   usageBump('o');       // daily open count (engagement rhythm for insights)
   initAndRender();
-  $('focusMin').addEventListener('change', durChanged);
-  $('breakMin').addEventListener('change', durChanged);
-  $('ring').style.strokeDasharray = RING_C;
   recoverWorkLive();
   if (localStorage.getItem('tk_dirty') === 'true') syncPush();
 }
