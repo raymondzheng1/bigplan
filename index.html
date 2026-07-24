@@ -88,6 +88,10 @@
   /* rocks */
   .taskcard.rock { box-shadow:inset 3px 0 0 0 #ffb800, 0 1px 3px rgba(0,0,0,.08), 0 0 1px rgba(0,0,0,.05); }
   .taskcard.ritdone { box-shadow:inset 3px 0 0 0 #30d158, 0 1px 3px rgba(0,0,0,.08), 0 0 1px rgba(0,0,0,.05); opacity:.85; }
+  .taskcard.running { box-shadow:inset 3px 0 0 0 var(--blue), 0 1px 3px rgba(0,0,0,.08), 0 0 1px rgba(0,0,0,.05); }
+  .runbadge { background:var(--tint); color:#0066cc; font-weight:700; border-radius:99px; padding:2px 10px;
+    font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:pointer; flex-shrink:0;
+    animation:pulse 1.3s infinite alternate; }
   .rockbtn.on { color:#ffb800 !important; opacity:1 !important; }
   #quote { text-align:right; font-style:italic; }
 
@@ -539,6 +543,7 @@
     </div>
     <div class="tbchips" id="tbchips"></div>
     <button id="stopalarm" onclick="stopAlarm()" style="display:none; margin:2px auto 10px; border:none; background:#ff3b30; color:#fff; border-radius:980px; padding:10px 24px; font-weight:600; cursor:pointer; animation:pulse .8s infinite alternate">Stop Alarm</button>
+    <button id="workBg" onclick="backgroundWork()" style="display:none; margin:0 auto 10px; border:none; background:var(--tint); color:#0066cc; border-radius:980px; padding:9px 20px; font-weight:600; font-size:13.5px; cursor:pointer">⬇ Keep timing in background</button>
     <div class="dlgrow">
       <button class="dlg-merge" id="workToggle" onclick="workToggle()">Start</button>
       <button class="dlg-new" onclick="workComplete()">✓ Complete</button>
@@ -1275,6 +1280,7 @@ function taskLi(t) {
     t.done = cb.checked;
     touch(t);
     if (cb.checked) {                       // completing → stamp it and move to the Done list
+      if (runners[t.id]) pauseRunner(t);    // fold any live timer into the task first
       t.doneAt = Date.now();
       t.doneDevice = devTag();
       t.queueName = (cols.find(c => c.id === t.col) || {}).name || 'To Do';  // remember its context queue
@@ -1323,7 +1329,16 @@ function taskLi(t) {
   } else {
     acts.append(ed, att, del);
   }
-  row.append(lab, sp);
+  if (runners[t.id] && !t.done) {       // live timer badge — tap to pause
+    li.classList.add('running');
+    const rb = document.createElement('span'); rb.className = 'runbadge'; rb.dataset.tid = t.id;
+    rb.textContent = '⏱ ' + fmtDur(runnerElapsed(t));
+    rb.title = 'Timer running — tap to pause';
+    rb.onclick = ev => { ev.stopPropagation(); pauseRunner(t); };
+    row.append(lab, sp, rb);
+  } else {
+    row.append(lab, sp);
+  }
   li.appendChild(row);
 
   if (t.note) {
@@ -1393,7 +1408,46 @@ function clearMarks() { document.querySelectorAll('.insert-above,.insert-below,.
   .forEach(x => x.classList.remove('insert-above','insert-below','dragover-file','dragover-col')); }
 
 /* ---- work mode: per-card time tracking ---- */
-let workTask = null, workTick = null, workStartMs = 0, workBase = 0, workSessStart = 0;
+let workTask = null, workStartMs = 0, workBase = 0;   // workStartMs/workBase = display mirrors
+/* multi-timer engine: any number of tasks can run concurrently */
+let runners = {};                        // taskId -> { startMs }
+function runnerElapsed(t) {
+  const r = runners[t.id];
+  return (t.timeSpent || 0) + (r ? (Date.now() - r.startMs) / 1000 : 0);
+}
+function startRunner(t) {
+  if (runners[t.id] || t.done) return;
+  runners[t.id] = { startMs: Date.now() };
+  ensureTicker();
+  if (booted) renderBoard();
+}
+function pauseRunner(t) {
+  const r = runners[t.id]; if (!r) return;
+  const secs = Math.round((Date.now() - r.startMs) / 1000);
+  if (secs >= 30) {
+    (t.sessions = t.sessions || []).push([r.startMs, secs]);
+    if (t.sessions.length > 30) t.sessions = t.sessions.slice(-30);
+  }
+  t.timeSpent = Math.round((t.timeSpent || 0) + (Date.now() - r.startMs) / 1000);
+  touch(t);
+  delete runners[t.id];
+  saveWorkLive();
+  saveAll();
+}
+let ticker = null;
+function ensureTicker() {
+  if (ticker) return;
+  ticker = setInterval(() => {
+    const ids = Object.keys(runners);
+    if (!ids.length) { clearInterval(ticker); ticker = null; saveWorkLive(); return; }
+    document.querySelectorAll('.runbadge').forEach(b => {   // live badges on the board
+      const t = tasks.find(x => x.id === b.dataset.tid);
+      if (t && runners[t.id]) b.textContent = '⏱ ' + fmtDur(runnerElapsed(t));
+    });
+    if (workTask && runners[workTask.id]) { paintWork(); focusMsg(); }
+    if (Date.now() - lastLiveW > 5000) { lastLiveW = Date.now(); saveWorkLive(); }
+  }, 1000);
+}
 let workTarget = 0, workAlarmFired = false, workOpenBase = 0;   // timebox (absorbed Focus timer)
 const TB_CHOICES = [15, 25, 45, 90];
 function renderTbChips() {
@@ -1413,15 +1467,7 @@ function renderTbChips() {
   w.appendChild(off);
   $('workBarWrap').style.display = workTarget ? 'block' : 'none';
 }
-function pushSession() {                // per-task work session log: [startMs, seconds]
-  if (!workSessStart || !workTask) return;
-  const secs = Math.round((Date.now() - workSessStart) / 1000);
-  if (secs >= 30) {
-    (workTask.sessions = workTask.sessions || []).push([workSessStart, secs]);
-    if (workTask.sessions.length > 30) workTask.sessions = workTask.sessions.slice(-30);
-  }
-  workSessStart = 0;
-}
+/* (session logging now lives inside pauseRunner) */
 function fmtDur(s) {
   s = Math.round(s);
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
@@ -1433,13 +1479,13 @@ function fmtDurLabel(s) {
   const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60);
   return h ? h + 'h ' + m + 'm' : (m >= 1 ? m + 'm' : s + 's');
 }
-function curElapsed() { return workBase + (workStartMs ? (Date.now() - workStartMs) / 1000 : 0); }
+function curElapsed() { return workTask ? runnerElapsed(workTask) : 0; }
 function paintWork() {
   $('workClock').textContent = fmtDur(curElapsed());
   if (workTarget) {                     // timebox progress + alarm at target
     const sess = curElapsed() - workOpenBase;
     $('workBar').style.width = Math.min(100, sess / (workTarget * 60) * 100) + '%';
-    if (sess >= workTarget * 60 && !workAlarmFired && workStartMs) {
+    if (sess >= workTarget * 60 && !workAlarmFired && workTask && runners[workTask.id]) {
       workAlarmFired = true;
       startAlarm();
       toast('⏰ ' + workTarget + 'm timebox reached — break or push on, your call');
@@ -1449,41 +1495,52 @@ function paintWork() {
 }
 function openWork(t) {
   usageBump('w');
-  workTask = t; workBase = t.timeSpent || 0; workStartMs = 0; workSessStart = 0;
-  workOpenBase = workBase; workAlarmFired = false;
+  workTask = t;
+  workBase = t.timeSpent || 0;
+  workStartMs = runners[t.id] ? 1 : 0;              // display mirror (adopts a running background timer)
+  workOpenBase = runnerElapsed(t); workAlarmFired = false;
   renderTbChips();
   $('workText').textContent = t.text;
   $('workText').classList.toggle('longtext', t.text.length > 90);
   $('workNote').textContent = t.note || '';
   saveWorkLive();
-  $('workToggle').textContent = workBase > 0 ? 'Resume' : 'Start';
+  $('workToggle').textContent = runners[t.id] ? 'Pause' : (workBase > 0 ? 'Resume' : 'Start');
+  $('workBg').style.display = runners[t.id] ? '' : 'none';
+  $('workClock').classList.toggle('running', !!runners[t.id]);
+  if (runners[t.id]) ensureTicker();
   paintWork();
   $('work').classList.add('on');
 }
 function workToggle() {
-  if (workStartMs) {                    // pause — persist what's logged
-    workBase = curElapsed(); pushSession(); workStartMs = 0;
-    clearInterval(workTick); workTick = null;
-    workTask.timeSpent = Math.round(workBase); touch(workTask); saveAll();
+  if (!workTask) return;
+  if (runners[workTask.id]) {           // pause — folds the run into the task + logs the session
+    pauseRunner(workTask);
+    workBase = workTask.timeSpent || 0; workStartMs = 0;
     $('workClock').classList.remove('running');
     $('workToggle').textContent = 'Resume';
-  } else {                              // start / resume
-    workStartMs = Date.now(); workSessStart = workStartMs;
+    $('workBg').style.display = 'none';
+  } else {                              // start / resume (other tasks may be running too — that's fine)
+    startRunner(workTask);
+    workStartMs = 1;
     $('workClock').classList.add('running');
-    workTick = setInterval(() => {
-      paintWork();
-      focusMsg();
-      if (Date.now() - lastLiveW > 5000) { lastLiveW = Date.now(); saveWorkLive(); }  // live-persist every 5s
-    }, 500);
     $('workToggle').textContent = 'Pause';
+    $('workBg').style.display = '';
   }
   saveWorkLive();
   paintWork();
 }
+function backgroundWork() {             // close the focus view, keep this task's clock running
+  if (!workTask || !runners[workTask.id]) return;
+  stopAlarm();
+  toast('⏱ Still timing “' + workTask.text.slice(0, 30) + (workTask.text.length > 30 ? '…' : '') + '” — live badge on its card');
+  $('work').classList.remove('on');
+  workTask = null; workStartMs = 0;
+  renderBoard();
+}
 function stopAndSave() {
-  if (workStartMs) { workBase = curElapsed(); pushSession(); workStartMs = 0; }
-  clearInterval(workTick); workTick = null;
-  if (workTask && workBase > 0) { workTask.timeSpent = Math.round(workBase); touch(workTask); }
+  if (workTask && runners[workTask.id]) pauseRunner(workTask);
+  if (workTask) workBase = workTask.timeSpent || 0;
+  workStartMs = 0;
 }
 /* encouragement that deepens with the session */
 const FOCUS_MSGS = [
@@ -1497,19 +1554,21 @@ const FOCUS_MSGS = [
   [120, 'Two hours deep. Remember to stand up 🙂']
 ];
 function focusMsg() {
-  if (!workStartMs) return;
+  if (!workTask || !runners[workTask.id]) return;
   const mins = (curElapsed() - workOpenBase) / 60;
   let msg = '';
   FOCUS_MSGS.forEach(([m, s]) => { if (mins >= m) msg = s; });
   if (msg) $('workPrev').textContent = msg;
 }
 let lastLiveW = 0;
-function saveWorkLive() {               // continuously persisted live timer — survives reloads/updates
+function saveWorkLive() {               // checkpoint ALL running timers — survives reloads/updates
   try {
-    if (!workTask) { localStorage.removeItem('tk_worklive'); return; }
-    localStorage.setItem('tk_worklive', JSON.stringify({
-      id: workTask.id, elapsed: Math.round(curElapsed()), running: !!workStartMs, ts: Date.now()
-    }));
+    const ids = Object.keys(runners);
+    if (!ids.length) { localStorage.removeItem('tk_worklive'); return; }
+    localStorage.setItem('tk_worklive', JSON.stringify(ids.map(id => {
+      const t = tasks.find(x => x.id === id);
+      return { id, elapsed: t ? Math.round(runnerElapsed(t)) : 0, ts: Date.now() };
+    })));
   } catch {}
 }
 function closeWork() {
@@ -2555,13 +2614,15 @@ function refreshUI() {  // apply freshly-synced data IN PLACE — never reload m
 }
 function recoverWorkLive() {            // a reload/app-update can no longer lose tracked time
   const live = load('tk_worklive', null);
-  if (!live || !live.id) return;
+  if (!live) return;
   localStorage.removeItem('tk_worklive');
-  const t = tasks.find(x => x.id === live.id);
-  if (!t || !live.elapsed) return;
-  if (live.elapsed > (t.timeSpent || 0)) { t.timeSpent = live.elapsed; touch(t); saveAll(); }
-  toast('Recovered ' + fmtDurLabel(live.elapsed) + ' tracked on “' + t.text.slice(0, 32) + (t.text.length > 32 ? '…' : '') + '”');
-  openWork(t);
+  const list = Array.isArray(live) ? live : [live];   // supports the legacy single-timer format
+  let n = 0;
+  list.forEach(l => {
+    const t = tasks.find(x => x.id === l.id);
+    if (t && l.elapsed > (t.timeSpent || 0)) { t.timeSpent = Math.round(l.elapsed); touch(t); n++; }
+  });
+  if (n) { saveAll(); toast('⏱ Recovered tracked time on ' + n + ' task' + (n > 1 ? 's' : '')); }
 }
 function boot() {
   if (booted) return; booted = true;
