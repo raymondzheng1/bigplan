@@ -742,6 +742,16 @@ function applyRemote(data) {
 function tTime(t) { return t.touchedAt || t.doneAt || t.editedAt || t.createdAt || 0; }
 function mergeRemote(remoteState) {
   const rdata = remoteState.data || {};
+  // merge COLUMNS first — union of both sides. (Regression guard: keeping only the local
+  // column list silently deleted queues created on the other device and re-homed their
+  // tasks into To Do — the "nab queue" bug.)
+  let rC = [], lC = [];
+  try { rC = JSON.parse(rdata.tk_cols || '[]'); } catch {}
+  try { lC = JSON.parse(localStorage.getItem('tk_cols') || '[]'); } catch {}
+  const lcIds = new Set(lC.map(c => c.id));
+  const colsU = lC.slice();
+  rC.forEach(c => { if (c && c.id && !lcIds.has(c.id)) colsU.push(c); });
+  if (colsU.length) localStorage.setItem('tk_cols', JSON.stringify(colsU));
   let rT = [], lT = [];
   try { rT = JSON.parse(rdata.tk_tasks || '[]'); } catch {}
   try { lT = JSON.parse(localStorage.getItem('tk_tasks') || '[]'); } catch {}
@@ -1137,6 +1147,11 @@ function initState() {
   ];
   tasks = load('tk_tasks', []);
   const migBase = Date.now();
+  // SAFETY NET: if any open task references a queue we don't have, RECREATE the queue
+  // ("Recovered") instead of silently sweeping its tasks into To Do. Losing a column
+  // must never mean losing the grouping.
+  const missingCols = new Set(tasks.filter(t => !t.done && t.col && !cols.some(c => c.id === t.col)).map(t => t.col));
+  missingCols.forEach(id => cols.push({ id, name: 'Recovered' }));
   tasks.forEach((t, i) => {
     if (!t.files) t.files = [];
     if (!t.id) t.id = uid();

@@ -66,6 +66,8 @@ check(apiSrc.includes('sendAlert'), 'state.js alerts on auth failure + KV failur
 check(read('api/export.js').includes('sendAlert'), 'export.js alerts on auth failure');
 check(read('api/alert.js').includes('timingSafeEqual'), 'client error endpoint is passcode-gated');
 check(html.includes('reportError'), 'client reports JS/sync/404 errors');
+check(/mergeRemote[\s\S]{0,600}tk_cols/.test(html), 'sync merge unions COLUMNS too (nab-queue regression guard)');
+check(html.includes("name: 'Recovered'"), 'missing queues are recreated, never silently swept into To Do');
 
 console.log('daily update cron (harness §7/§16)');
 check(existsSync(resolve(ROOT, 'api/cron/daily.js')), 'api/cron/daily.js exists');
