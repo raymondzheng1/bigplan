@@ -2029,6 +2029,21 @@ function findDup(text) {
 let pendingAdd = null;
 function addTask() {
   const v = $('ti').value.trim(); if (!v) return;
+  // habit detection: adding something you've already completed on 2+ days → offer to make it a ritual
+  const seed = ritualSeed(v);
+  if (seed && seed.distinct >= 2) {
+    if (confirm('You’ve completed “' + v.slice(0, 40) + '” on ' + seed.distinct + ' different days already.\n\nMake it a DAILY RITUAL? It will respawn every day and build a 🔥 streak (starting at ' + seed.run + ').')) {
+      const id = uid(); justAddedId = id;
+      tasks.push({ id, text: v, done: false, files: [], col: newTaskCol(), createdAt: Date.now(),
+        repeat: 'daily', streak: seed.run, lastDoneDay: seed.last,
+        src: voiceUsed ? 'voice' : 'typed', createdDevice: devTag(), touchedAt: Date.now() });
+      voiceUsed = false;
+      $('ti').value = '';
+      saveAll();
+      toast('🔁 Ritual created — 🔥 streak ' + seed.run + '. It comes back daily now.');
+      return;
+    }
+  }
   const dup = findDup(v);
   if (dup) {
     pendingAdd = { text: v, dup };
@@ -2328,6 +2343,18 @@ function liveStreak(t) {
   if (!t.repeat || !t.streak) return 0;
   const today = todayKey();
   return (t.lastDoneDay === today || streakContinues(t.repeat, t.lastDoneDay, today)) ? t.streak : 0;
+}
+function ritualSeed(text) {             // has this task been done on multiple days already?
+  const nt = norm(text);
+  const days = [...new Set(tasks
+    .filter(t => t.done && t.doneAt && (norm(t.text) === nt || similarity(text, t.text) >= 0.8))
+    .map(t => { const d = new Date(t.doneAt); return dkey(new Date(d.getTime() - d.getTimezoneOffset() * 60000)); }))].sort();
+  if (!days.length) return null;
+  let run = 1;
+  for (let i = days.length - 1; i > 0; i--) {
+    if (dayGap(days[i - 1], days[i]) === 1) run++; else break;
+  }
+  return { distinct: days.length, run, last: days[days.length - 1] };
 }
 function respawnRepeat(t) {
   const today = todayKey();
