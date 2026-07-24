@@ -87,6 +87,7 @@
   .mrow .x { opacity:1; }
   /* rocks */
   .taskcard.rock { box-shadow:inset 3px 0 0 0 #ffb800, 0 1px 3px rgba(0,0,0,.08), 0 0 1px rgba(0,0,0,.05); }
+  .taskcard.ritdone { box-shadow:inset 3px 0 0 0 #30d158, 0 1px 3px rgba(0,0,0,.08), 0 0 1px rgba(0,0,0,.05); opacity:.85; }
   .rockbtn.on { color:#ffb800 !important; opacity:1 !important; }
   #quote { text-align:right; font-style:italic; }
 
@@ -1262,6 +1263,7 @@ function taskLi(t) {
   const li = document.createElement('li');
   li.className = 'taskcard' + (t.done ? ' done' : '');
   if (t.id === justAddedId) { li.classList.add('newcard'); justAddedId = null; }
+  if (t.repeat && !t.done && t.lastDoneDay === todayKey()) li.classList.add('ritdone');
   li.dataset.tid = t.id;
   li.draggable = true;
   touchDragInit(li, t);
@@ -1350,10 +1352,11 @@ function taskLi(t) {
   const tfoot = document.createElement('div'); tfoot.className = 'tfoot';
   const ts = document.createElement('span'); ts.className = 'tstamp';
   const stk = t.done ? (t.streakAtDone || 0) : liveStreak(t);   // (generated text only — safe as HTML)
-  ts.innerHTML = 'Added ' + fmtDate(t.createdAt)
+  ts.innerHTML = (t.repeat && !t.done ? '' : 'Added ' + fmtDate(t.createdAt))
     + (t.done && t.doneAt ? '  ·  ✓ Done ' + fmtDate(t.doneAt) : '')
     + (t.timeSpent ? '  ·  ⏱ ' + fmtDurLabel(t.timeSpent) : '')
-    + (t.repeat ? '  ·  🔁' + (stk ? ' <span class="flame">🔥</span>' + stk : '') : '');
+    + (t.repeat ? (t.done ? '  ·  ' : '') + '🔁 ' + t.repeat + (stk ? ' <span class="flame">🔥</span>' + stk : '')
+        + (t.done ? '' : '  ·  ' + ritualDueHtml(t)) : '');
   tfoot.append(ts, acts);
   li.appendChild(tfoot);
 
@@ -2343,6 +2346,18 @@ function liveStreak(t) {
   if (!t.repeat || !t.streak) return 0;
   const today = todayKey();
   return (t.lastDoneDay === today || streakContinues(t.repeat, t.lastDoneDay, today)) ? t.streak : 0;
+}
+function ritualDueHtml(t) {             // per-date status shown on the active ritual card
+  const today = todayKey();
+  if (t.lastDoneDay === today)
+    return '<span style="color:#30d158;font-weight:600">✓ done today · next ' +
+      (t.repeat === 'daily' ? 'tomorrow' : t.repeat === 'weekly' ? 'next week' : 'next weekday') + '</span>';
+  if (t.lastDoneDay && !streakContinues(t.repeat, t.lastDoneDay, today)) {
+    const g = dayGap(t.lastDoneDay, today);
+    return '<span style="color:#ff9f0a;font-weight:600">⚠ due today · missed ' + Math.max(1, g - 1) + 'd</span>';
+  }
+  return '<span style="color:#0071e3;font-weight:600">due today · ' +
+    new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) + '</span>';
 }
 function ritualSeed(text) {             // has this task been done on multiple days already?
   const nt = norm(text);
